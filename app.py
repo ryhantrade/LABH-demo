@@ -378,10 +378,27 @@ def esc(v):
     return html.escape("" if v is None else str(v), quote=True)
 
 def money(v, cur="BDT"):
+    sym = "৳" if cur == "BDT" else cur
     try:
-        return f"{cur} {float(v):,.2f}"
+        f = float(v)
+        return f"{'-' if f < 0 else ''}{sym}{abs(f):,.2f}"
     except (TypeError, ValueError):
-        return f"{cur} 0.00"
+        return f"{sym}0.00"
+
+
+def fmt_dt(s):
+    """'2026-10-26T10:00:00' -> '26 Oct 2026, 10:00 AM'; date-only -> '26 Oct 2026'."""
+    if not s:
+        return ""
+    s = str(s)
+    try:
+        from datetime import datetime
+        d = datetime.fromisoformat(s.replace("Z", ""))
+        if len(s) <= 10:
+            return f"{d.day} {d.strftime('%b %Y')}"
+        return f"{d.day} {d.strftime('%b %Y, %I:%M %p')}"
+    except Exception:
+        return s
 
 def today():
     return date.today().isoformat()
@@ -1235,6 +1252,12 @@ EXTRA_CSS = """
 .sidebar.open{left:0}
 @media(max-width:767px){.sidebar.open{display:block}}
 .drawer-overlay.show{display:block;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:90}
+/* UI pass (reference: labhsbm.ai.studio) — light-grey filled inputs,
+   grey-blue table header strip, plain bold row links (not green underlined). */
+main input,main select,main textarea{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px}
+table th{background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:11px;letter-spacing:.4px;padding:10px 12px;text-align:left}
+table td a{color:#0f172a;text-decoration:none;font-weight:600}
+table td a:hover{text-decoration:underline}
 .hamburger{display:none}
 @media(max-width:767px){.hamburger{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;cursor:pointer;flex-shrink:0}}
 .bellwrap{position:relative;display:inline-flex}
@@ -4795,7 +4818,7 @@ class Handler(BaseHTTPRequestHandler):
             _nm = _r["cname"] or _r["sname"] or "Payment"
             _txns.append(("Payment", f"Payment · {esc(_nm)}" + (f" · {esc(_r['method'])}" if _r["method"] else ""), _r["amount"], _r["created_at"] or _r["pay_date"]))
         _txns.sort(key=lambda _x: _x[3] or "", reverse=True)
-        _tx_rows = "".join(f"<tr><td>{i + 1}</td><td><span class=\"pill {_tp.lower()}\">{_tp}</span></td><td>{_det}</td><td>{money(_amt, cur)}</td><td>{esc(_tm)}</td></tr>" for i, (_tp, _det, _amt, _tm) in enumerate(_txns[:10]))
+        _tx_rows = "".join(f"<tr><td>{i + 1}</td><td><span class=\"pill {_tp.lower()}\">{_tp}</span></td><td>{_det}</td><td>{money(_amt, cur)}</td><td>{esc(fmt_dt(_tm))}</td></tr>" for i, (_tp, _det, _amt, _tm) in enumerate(_txns[:10]))
         txn_card = ('<div class="card"><h3>Recent Transactions</h3>'
                     + table(["#", "Type", "Details", "Amount", "Time"], _tx_rows)
                     + ("<p>No transactions yet.</p>" if not _txns else "")
@@ -6110,7 +6133,7 @@ class Handler(BaseHTTPRequestHandler):
                 f"<input type='hidden' name='csrf' value='{esc(user['_csrf'])}'>"
                 f"<input type='hidden' name='action' value='mark-read'>"
                 f"<input type='hidden' name='notif_id' value='{r['id']}'><button type='submit' class='secondary'>Mark read</button></form>")
-            items += f"<li class='{cls}'><b>{esc(r['title'])}</b> — {esc(r['body'])} <small>({esc(r['created_at'] or '')})</small> {mark}</li>"
+            items += f"<li class='{cls}'><b>{esc(r['title'])}</b> — {esc(r['body'])} <small>({esc(fmt_dt(r['created_at']))})</small> {mark}</li>"
         body = ('<div class="card"><h3>Notifications</h3>'
                 + (f"<ul>{items}</ul>" if rows else "<p>All clear — no alerts.</p>")
                 + f"<p>{form_start('/notifications', user['_csrf'])}<input type='hidden' name='action' value='mark-all-read'>"
