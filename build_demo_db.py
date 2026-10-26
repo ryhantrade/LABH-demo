@@ -43,22 +43,22 @@ def main():
     cat_acc = cur.lastrowid
 
     products = [
-        # name, category, cost, sell, stock, low_stock
-        ("Note 60 (8+256)", cat_phone, 18000, 22499, 24, 5),
-        ("HOT 70 Pro 5G", cat_phone, 24000, 28999, 18, 5),
-        ("Smart 20 (4+64)", cat_phone, 12000, 14999, 30, 5),
-        ("Note Edge (8+256)", cat_phone, 28000, 33999, 12, 5),
-        ("Smart 10 (3+64)", cat_phone, 9500, 11999, 40, 5),
-        ("Galaxy A15", cat_phone, 20000, 24500, 15, 5),
-        ("Redmi 13C", cat_phone, 14000, 16999, 22, 5),
-        ("Charger 33W", cat_acc, 800, 1200, 60, 5),
-        ("Back Cover Note 60", cat_acc, 250, 450, 3, 5),   # low stock demo
-        ("Glass Protector", cat_acc, 150, 300, 0, 5),     # out of stock demo
+        # name, category, brand, cost, sell, stock, low_stock
+        ("Note 60 (8+256)", cat_phone, "Infinix", 18000, 22499, 24, 5),
+        ("HOT 70 Pro 5G", cat_phone, "Infinix", 24000, 28999, 18, 5),
+        ("Smart 20 (4+64)", cat_phone, "Infinix", 12000, 14999, 30, 5),
+        ("Note Edge (8+256)", cat_phone, "Infinix", 28000, 33999, 12, 5),
+        ("Smart 10 (3+64)", cat_phone, "Infinix", 9500, 11999, 40, 5),
+        ("Galaxy A15", cat_phone, "Samsung", 20000, 24500, 15, 5),
+        ("Redmi 13C", cat_phone, "Xiaomi", 14000, 16999, 22, 5),
+        ("Charger 33W", cat_acc, "", 800, 1200, 60, 5),
+        ("Back Cover Note 60", cat_acc, "", 250, 450, 3, 5),   # low stock demo
+        ("Glass Protector", cat_acc, "", 150, 300, 0, 5),     # out of stock demo
     ]
     pid = {}
-    for name, cat, cost, sell, stock, low in products:
-        cur.execute("INSERT INTO products(business_id,category_id,name,purchase_price,selling_price,stock,low_stock,created_at)"
-                    " VALUES(?,?,?,?,?,?,?,?)", (biz, cat, name, cost, sell, stock, low, "2026-10-01"))
+    for name, cat, brand, cost, sell, stock, low in products:
+        cur.execute("INSERT INTO products(business_id,category_id,name,brand,purchase_price,selling_price,stock,low_stock,created_at)"
+                    " VALUES(?,?,?,?,?,?,?,?,?)", (biz, cat, name, brand, cost, sell, stock, low, "2026-10-01"))
         pid[name] = cur.lastrowid
 
     customers = {}
@@ -81,8 +81,8 @@ def main():
         ("2026-10-25", "INV-DEMO-007", None, [("Smart 10 (3+64)", 1)], 11999),
         ("2026-10-26", "INV-DEMO-008", "Rahim Mobile", [("Note 60 (8+256)", 1)], 22499),
     ]
-    price = {name: sell for name, _c, _cost, sell, _s, _l in products}
-    cost = {name: c for name, _c, c, _s, _st, _l in products}
+    price = {name: sell for name, _c, _b, _cost, sell, _s, _l in products}
+    cost = {name: c for name, _c, _b, c, _s, _st, _l in products}
     for date, inv, cust, items, paid in sales:
         total = sum(price[n] * qty for n, qty in items)
         cur.execute("INSERT INTO sales(business_id,customer_id,invoice_no,total,paid,due,sale_date,created_at)"

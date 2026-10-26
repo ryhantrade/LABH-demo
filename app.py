@@ -1233,6 +1233,7 @@ EXTRA_CSS = """
 .drawer-overlay{display:none}
 @media(max-width:767px){.sidebar{position:fixed;left:-280px;top:0;z-index:100;transition:left .2s;box-shadow:0 0 30px rgba(0,0,0,.3)}
 .sidebar.open{left:0}
+@media(max-width:767px){.sidebar.open{display:block}}
 .drawer-overlay.show{display:block;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:90}
 .hamburger{display:none}
 @media(max-width:767px){.hamburger{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;cursor:pointer;flex-shrink:0}}
@@ -5642,7 +5643,7 @@ class Handler(BaseHTTPRequestHandler):
         body = '<div class="card">' + table(["Date", "Title", "Category", "Amount", "Method"], rh) + '</div>'
         if user["role"] in ("owner", "admin"):
             body += ('<div class="card"><h3>New expense</h3>' + form_start("/expenses", user["_csrf"])
-                     + field("Title", "title", "", "text", True) + field("Category (Rent/Salary/Transport/Utilities/Other)", "category")
+                     + field("Title", "title", "", "text", True) + field("Category (Rent/Salary/Transport/Utility/Others)", "category")
                      + field("Amount", "amount", "", "number", True) + field("Method", "method") + field("Note", "note")
                      + '<button type="submit">Save expense</button></form></div>')
         return self.send_html(200, page(user, biz, "Expenses", body))
@@ -6271,20 +6272,31 @@ class Handler(BaseHTTPRequestHandler):
         purch_paid = q("SELECT COALESCE(SUM(paid),0) FROM purchases WHERE business_id=? AND purchase_date BETWEEN ? AND ?", (b, frm, to), one=True)[0]
         cash_in = sales[2]
         cash_out = purch_paid + exps
-        links = "".join(f'<a class="btn" href="/reports/{s}">{n}</a> ' for s, n in [
-            ("sales", "Sales"), ("inventory", "Inventory"), ("customer-dues", "Customer dues"),
-            ("supplier-dues", "Supplier dues"), ("profit-loss", "Profit/Loss"),
-            ("balance-sheet", "Balance sheet"), ("cash-flow", "Cash flow"),
-            ("receivables", "Receivables"), ("payables", "Payables"), ("imei", "IMEI"),
-            ("expense-cost", "Expense cost"), ("gross-profit", "Gross profit"),
-            ("real-profit", "Real profit"), ("profit-by-category", "Profit by category"),
-            ("profit-by-product", "Profit by product"), ("profit-by-brand", "Profit by brand"),
-            ("profit-by-customer", "Profit by customer"), ("sales-daily", "Daily sales"),
-            ("sales-weekly", "Weekly sales"), ("sales-monthly", "Monthly sales"),
-            ("discount", "Discount"), ("returns", "Returns"), ("stock-valuation", "Stock valuation"),
-            ("stock-movement", "Stock movement"), ("user-activity", "User activity"),
-            ("business-analytics", "Business analytics")])
-        body = (f'<div class="card"><h3>All reports</h3><p>{links}</p></div>'
+        groups = [
+            ("Sales", [("sales", "Sales"), ("sales-daily", "Daily sales"),
+                       ("sales-weekly", "Weekly sales"), ("sales-monthly", "Monthly sales"),
+                       ("discount", "Discount")]),
+            ("Inventory", [("inventory", "Inventory"), ("stock-valuation", "Stock valuation"),
+                           ("stock-movement", "Stock movement"), ("imei", "IMEI")]),
+            ("Customers & suppliers", [("customer-dues", "Customer dues"),
+                                       ("supplier-dues", "Supplier dues"),
+                                       ("receivables", "Receivables"), ("payables", "Payables")]),
+            ("Purchases", [("returns", "Purchase returns")]),
+            ("Profit", [("gross-profit", "Gross profit"), ("real-profit", "Real profit"),
+                        ("profit-loss", "Profit/Loss"),
+                        ("profit-by-category", "Profit by category"),
+                        ("profit-by-product", "Profit by product"),
+                        ("profit-by-brand", "Profit by brand"),
+                        ("profit-by-customer", "Profit by customer")]),
+            ("Finance", [("balance-sheet", "Balance sheet"), ("cash-flow", "Cash flow"),
+                         ("expense-cost", "Expense cost")]),
+            ("Other", [("user-activity", "User activity"),
+                       ("business-analytics", "Business analytics")]),
+        ]
+        links = "".join(f'<h4 style="margin:14px 0 6px">{g}</h4><p>' +
+                        "".join(f'<a class="btn" href="/reports/{s}">{n}</a> ' for s, n in items) + '</p>'
+                        for g, items in groups)
+        body = (f'<div class="card"><h3>All reports</h3>{links}</div>'
                 f'<div class="card"><form method="get" action="/reports">From <input type="date" name="from" value="{esc(frm) if frm != "2000-01-01" else ""}"> '
                 f'To <input type="date" name="to" value="{esc(to) if to != "2999-12-31" else ""}"> <button type="submit">Filter</button></form></div>'
                 '<div class="card"><h3>Sales summary</h3>'
@@ -6292,7 +6304,7 @@ class Handler(BaseHTTPRequestHandler):
                 '<div class="card"><h3>Profit / Loss</h3>'
                 f'<p>Sales {money(sales[1], cur)} - Purchases {money(purch, cur)} - Expenses {money(exps, cur)} = <b>{money(profit, cur)}</b></p></div>'
                 '<div class="card"><h3>Cash flow</h3>'
-                f'<p>Cash in (sales paid + customer payments): {money(cash_in, cur)}<br>Cash out (supplier payments + expenses): {money(cash_out, cur)}<br>Net: <b>{money(cash_in - cash_out, cur)}</b></p></div>'
+                f'<p>Cash in (sales paid): {money(cash_in, cur)}<br>Cash out (supplier payments + expenses): {money(cash_out, cur)}<br>Net: <b>{money(cash_in - cash_out, cur)}</b></p></div>'
                 '<div class="card"><h3>Inventory report</h3>' + table(["Product", "Stock", "Value (cost)"], irh) + '</div>'
                 '<div class="card"><h3>Customer dues</h3>' + table(["Customer", "Due"], crh) + '</div>'
                 '<div class="card"><h3>Supplier dues</h3>' + table(["Supplier", "Due"], srh) + '</div>')
@@ -6486,20 +6498,23 @@ class Handler(BaseHTTPRequestHandler):
             rh = "".join(f"<tr><td>{esc(r['br']) or '(no brand)'}</td><td>{money(r['rev'], cur)}</td><td>{money(r['cost'], cur)}</td><td>{money(r['rev'] - r['cost'], cur)}</td></tr>" for r in rows)
             return self.send_html(200, page(user, biz, "Profit by brand", filt + '<div class="card">' + table(["Brand", "Revenue", "COGS", "Profit"], rh) + '</div>'))
         if slug == "profit-by-customer":
-            rows = q("""SELECT COALESCE(c.name,'Walk-in') AS nm, COALESCE(SUM(s.total),0) AS rev,
-                        COALESCE(SUM(s.total - s.due),0) AS paid, COALESCE(SUM(s.due),0) AS due
-                        FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
+            rows = q("""SELECT COALESCE(c.name,'Walk-in') AS nm,
+                        COALESCE(SUM(si.amount),0) AS rev,
+                        COALESCE(SUM(si.qty * COALESCE(si.cost_price, p.purchase_price, 0)),0) AS cost
+                        FROM sale_items si JOIN sales s ON s.id=si.sale_id
+                        LEFT JOIN products p ON p.id=si.product_id
+                        LEFT JOIN customers c ON c.id=s.customer_id
                         WHERE s.business_id=? AND s.sale_date BETWEEN ? AND ?
                         GROUP BY nm ORDER BY rev DESC""", (b, frm, to))
-            rh = "".join(f"<tr><td>{esc(r['nm'])}</td><td>{money(r['rev'], cur)}</td><td>{money(r['paid'], cur)}</td><td>{money(r['due'], cur)}</td></tr>" for r in rows)
-            return self.send_html(200, page(user, biz, "Profit by customer", filt + '<div class="card">' + table(["Customer", "Sales", "Paid", "Due"], rh) + '</div>'))
+            rh = "".join(f"<tr><td>{esc(r['nm'])}</td><td>{money(r['rev'], cur)}</td><td>{money(r['cost'], cur)}</td><td>{money(r['rev'] - r['cost'], cur)}</td></tr>" for r in rows)
+            return self.send_html(200, page(user, biz, "Profit by customer", filt + '<div class="card">' + table(["Customer", "Revenue", "COGS", "Profit"], rh) + '</div>'))
         if slug in ("sales-daily", "sales-weekly", "sales-monthly"):
             fmt = {"sales-daily": "%Y-%m-%d", "sales-weekly": "%Y-W%W", "sales-monthly": "%Y-%m"}[slug]
             rows = q(f"""SELECT strftime('{fmt}', sale_date) AS per, COUNT(*) AS n, COALESCE(SUM(total),0) AS tot,
                         COALESCE(SUM(paid),0) AS paid FROM sales WHERE business_id=? AND sale_date BETWEEN ? AND ?
                         GROUP BY per ORDER BY per""", (b, frm, to))
             rh = "".join(f"<tr><td>{esc(r['per'])}</td><td>{r['n']}</td><td>{money(r['tot'], cur)}</td><td>{money(r['paid'], cur)}</td></tr>" for r in rows)
-            return self.send_html(200, page(user, biz, slug.replace("-", " ").title() + " sales", filt + '<div class="card">' + table(["Period", "Sales", "Total", "Paid"], rh) + '</div>'))
+            return self.send_html(200, page(user, biz, {"sales-daily": "Daily sales", "sales-weekly": "Weekly sales", "sales-monthly": "Monthly sales"}[slug], filt + '<div class="card">' + table(["Period", "Sales", "Total", "Paid"], rh) + '</div>'))
         if slug == "discount":
             rows = q("SELECT invoice_no, sale_date, discount, total FROM sales WHERE business_id=? AND discount>0 AND sale_date BETWEEN ? AND ? ORDER BY id DESC", (b, frm, to))
             tot = sum(r["discount"] for r in rows)
@@ -6509,7 +6524,7 @@ class Handler(BaseHTTPRequestHandler):
             rows = q("SELECT * FROM purchase_returns WHERE business_id=? AND return_date BETWEEN ? AND ? ORDER BY id DESC", (b, frm, to))
             tot = sum(r["total"] for r in rows)
             rh = "".join(f"<tr><td>{esc(r['return_date'])}</td><td>Purchase #{r['purchase_id']}</td><td>{money(r['total'], cur)}</td><td>{esc(r['note'])}</td></tr>" for r in rows)
-            return self.send_html(200, page(user, biz, "Returns report", filt + f'<div class="card"><p>Total purchase returns: {money(tot, cur)}</p>' + table(["Date", "Purchase", "Amount", "Note"], rh) + '</div>'))
+            return self.send_html(200, page(user, biz, "Purchase returns report", filt + f'<div class="card"><p>Total purchase returns: {money(tot, cur)}</p>' + table(["Date", "Purchase", "Amount", "Note"], rh) + '</div>'))
         if slug == "stock-valuation":
             rows = q("SELECT name, COALESCE(brand,'') AS br, stock, purchase_price, selling_price FROM products WHERE business_id=? ORDER BY name", (b,))
             rh = "".join(f"<tr><td>{esc(r['name'])}</td><td>{esc(r['br'])}</td><td>{r['stock']}</td><td>{money(r['stock'] * r['purchase_price'], cur)}</td><td>{money(r['stock'] * r['selling_price'], cur)}</td></tr>" for r in rows)
