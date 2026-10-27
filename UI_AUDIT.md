@@ -78,6 +78,15 @@ demo copy only:
 - Profile hub + Settings menu hub (anchored sections, single Save).
 - NOT built: Subscription screen (no paywall in the app; no fake
   plan state). POS structure untouched.
+- Reports index cleanup (2026-10-27, user: "ai jinish gola lagbe
+  na" + phone screenshot of the page below the menu): the Reports
+  page now shows ONLY the icon menu (11 items, board screen 10).
+  Removed from the index: the "All reports" grouped chips, the
+  From/To filter, and the Sales summary / Profit-Loss / Cash flow
+  cards and the inline Inventory / Customer dues / Supplier dues
+  tables. The 15 other report pages still exist at their URLs and
+  the menu's 11 detail pages are unchanged — only the index
+  listing was removed.
 
 ## Phase 2 (screen structure — NOT done, needs user direction)
 

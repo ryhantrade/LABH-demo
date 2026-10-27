@@ -6585,18 +6585,7 @@ class Handler(BaseHTTPRequestHandler):
             f'<a href="{s if s.startswith("/") else "/reports/" + s}"><span class="tile-ic">{icon(ic, 18)}</span><span class="lbl">{esc(n)}</span><span class="chev">&#8250;</span></a>'
             for n, ic, s in menu)
         body = (f'<div class="card"><h3>Reports</h3><div class="bd-menu">{menu_html}</div></div>'
-                f'<div class="card"><h3>All reports</h3>{links}</div>'
-                f'<div class="card"><form method="get" action="/reports">From <input type="date" name="from" value="{esc(frm) if frm != "2000-01-01" else ""}"> '
-                f'To <input type="date" name="to" value="{esc(to) if to != "2999-12-31" else ""}"> <button type="submit">Filter</button></form></div>'
-                '<div class="card"><h3>Sales summary</h3>'
-                f'<p>Sales: {sales[0]} | Total: {money(sales[1], cur)} | Paid: {money(sales[2], cur)} | Due: {money(sales[3], cur)}</p></div>'
-                '<div class="card"><h3>Profit / Loss</h3>'
-                f'<p>Sales {money(sales[1], cur)} - Purchases {money(purch, cur)} - Expenses {money(exps, cur)} = <b>{money(profit, cur)}</b></p></div>'
-                '<div class="card"><h3>Cash flow</h3>'
-                f'<p>Cash in (sales paid): {money(cash_in, cur)}<br>Cash out (supplier payments + expenses): {money(cash_out, cur)}<br>Net: <b>{money(cash_in - cash_out, cur)}</b></p></div>'
-                '<div class="card"><h3>Inventory report</h3>' + table(["Product", "Stock", "Value (cost)"], irh) + '</div>'
-                '<div class="card"><h3>Customer dues</h3>' + table(["Customer", "Due"], crh) + '</div>'
-                '<div class="card"><h3>Supplier dues</h3>' + table(["Supplier", "Due"], srh) + '</div>')
+                )
         return self.send_html(200, page(user, biz, "Reports", body))
 
     # -- full report suite (each report is scoped to this business and
