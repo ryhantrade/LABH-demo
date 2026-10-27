@@ -1293,6 +1293,13 @@ table td a:hover{text-decoration:underline}
 .txn-st-paid{color:#15803d;font-weight:700}
 .txn-st-partial{color:#ea580c;font-weight:700}
 .txn-st-due{color:#dc2626;font-weight:700}
+/* Premium invoice list rows (reuse .txn-row tiles) + per-row View/Print actions. */
+.txn-main b a{color:#0f172a;text-decoration:none}
+.inv-right{text-align:right;flex-shrink:0}
+.inv-right b{display:block;font-size:15px;color:#0f172a;white-space:nowrap}
+.inv-right .pill{margin-top:4px}
+.inv-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:8px}
+.inv-actions .btn{padding:5px 12px;font-size:12px}
 .hamburger{display:none}
 @media(max-width:767px){.hamburger{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;cursor:pointer;flex-shrink:0}}
 .bellwrap{position:relative;display:inline-flex}
@@ -5658,7 +5665,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.invoice_view(user, biz, cur, int(parts[1]))
         raise NotFound("Sale page not found")
 
-    def invoice_view(self, user, biz, cur, sale_id, template=None):
+    def invoice_view(self, user, biz, cur, sale_id, template=None, print_auto=False):
         if template is None:
             template = invoice_template_setting()
         b = user["business_id"]
@@ -5687,14 +5694,17 @@ class Handler(BaseHTTPRequestHandler):
                 + (f'<p>Note: {esc(_note)}</p>' if _note else "")
                 + table(_cols, rh)
                 + f'<p>Total: {money(sale["total"], cur)}<br>Paid: {money(sale["paid"], cur)}<br>Due: {money(sale["due"], cur)}</p>'
-                + f'<p class="noprint">Templates: <a class="btn" href="/invoices/{sale["id"]}?template=modern">Modern</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=classic">Classic</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=minimal">Minimal</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=bold">Bold</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=receipt">Receipt</a> — set the default in Settings &gt; Invoice Templates. Use browser Print (Ctrl+P) to print.</p></div>')
+                + f'<p class="noprint"><button type="button" class="btn" onclick="window.print()">Print invoice</button> <a class="btn secondary" href="/invoices">Back to Invoices</a></p>'
+                + f'<p class="noprint">Templates: <a class="btn secondary" href="/invoices/{sale["id"]}?template=modern">Modern</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=classic">Classic</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=minimal">Minimal</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=bold">Bold</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=receipt">Receipt</a> — set the default in Settings &gt; Invoice Templates.</p></div>'
+                + ('<script>window.print()</script>' if print_auto else ""))
         return self.send_html(200, page(user, biz, f"Invoice {sale['invoice_no']}", body))
 
     def view_invoices(self, user, biz, cur, parts, method):
         b = user["business_id"]
         if len(parts) == 2 and parts[1].isdigit() and method == "GET":
             qs = parse_qs(urlparse(self.path).query)
-            return self.invoice_view(user, biz, cur, int(parts[1]), template=qs.get("template", [None])[0])
+            return self.invoice_view(user, biz, cur, int(parts[1]), template=qs.get("template", [None])[0],
+                                     print_auto=qs.get("print", ["0"])[0] == "1")
         if len(parts) == 1 and method == "GET":
             qs = parse_qs(urlparse(self.path).query)
             qterm = qs.get("q", [""])[0].strip().lower()
@@ -5716,13 +5726,27 @@ class Handler(BaseHTTPRequestHandler):
                 rows = [r for r in rows if r["due"] <= 0]
             elif status == "due":
                 rows = [r for r in rows if r["due"] > 0]
-            rh = "".join(f"<tr><td><a href='/invoices/{r['id']}'>{esc(r['invoice_no'])}</a></td><td>{esc(r['cname'] or 'Walk-in')}</td>"
-                         f"<td>{esc(r['sale_date'])}</td><td>{money(r['total'], cur)}</td><td>{money(r['paid'], cur)}</td><td>{money(r['due'], cur)}</td></tr>" for r in rows)
-            filt = ('<div class="card"><form method="get" action="/invoices">'
-                    f'<input type="search" name="q" placeholder="Search invoice/customer" value="{esc(qterm)}"> '
-                    '<select name="status"><option value="all">All</option><option value="paid">Paid</option><option value="due">Due</option></select> '
-                    '<button type="submit">Filter</button> <a class="btn secondary" href="/invoices?export=csv">Export CSV</a></form></div>')
-            return self.send_html(200, page(user, biz, "Invoices", filt + '<div class="card">' + table(["Invoice", "Customer", "Date", "Total", "Paid", "Due"], rh) + '</div>'))
+            def _st(r):
+                if r["due"] <= 0:
+                    return "Paid"
+                if r["paid"] > 0:
+                    return "Partial"
+                return "Due"
+            rh = ""
+            for r in rows:
+                _s = _st(r)
+                rh += (f'<div class="txn-row"><span class="txn-ic sale">{icon("receipt", 20)}</span>'
+                       f'<span class="txn-main"><b><a href="/invoices/{r["id"]}">{esc(r["invoice_no"])}</a></b>'
+                       f'<small>{esc(r["cname"] or "Walk-in")} · {esc(fmt_dt(r["sale_date"]))}</small>'
+                       f'<small>Paid {money(r["paid"], cur)} · Due {money(r["due"], cur)}</small></span>'
+                       f'<span class="inv-right"><b>{money(r["total"], cur)}</b><span class="pill {_s.lower()}">{_s}</span>'
+                       f'<span class="inv-actions"><a class="btn secondary" href="/invoices/{r["id"]}">View</a> '
+                       f'<a class="btn secondary" href="/invoices/{r["id"]}?print=1">Print</a></span></span></div>')
+            pills = "".join(f'<a class="{"on" if status == v else ""}" href="/invoices?status={v}{("&amp;q=" + esc(qterm)) if qterm else ""}">{l}</a>'
+                            for v, l in [("all", "All"), ("paid", "Paid"), ("due", "Due")])
+            filt = (f'<div class="card"><form method="get" action="/invoices"><input type="hidden" name="status" value="{esc(status)}"><div class="bd-search">{icon("search", 18)}<input type="search" name="q" placeholder="Search invoice/customer" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>'
+                    f'<div class="bd-pills">{pills}</div><p><a class="btn secondary" href="/invoices?export=csv">Export CSV</a></p></div>')
+            return self.send_html(200, page(user, biz, "Invoices", filt + '<div class="card"><h3>Invoices</h3>' + (rh if rows else "<p>No invoices yet.</p>") + '</div>'))
         raise NotFound("Invoice page not found")
 
     def view_purchases(self, user, biz, cur, parts, method):

@@ -98,6 +98,21 @@ demo copy only:
   fmt_dt_short helper) on the right, with hairline dividers and
   "View All" in the section header. Same 10 newest transactions,
   same data and same /sales target — presentation only.
+- Premium Invoices + View/Print (2026-10-27, user: "invoice page
+  ta aro premium koro and invoice view and print ar option add
+  koro"): the /invoices list is now premium rows (receipt icon
+  tile + bold invoice no. + customer · date + Paid · Due line on
+  the left; bold total + Paid/Partial/Due pill + View + Print
+  buttons on the right) with a search pill and All/Paid/Due status
+  pills (same pattern as the sales list). The invoice view now has
+  a real green "Print invoice" button (window.print(); the old
+  "Use browser Print (Ctrl+P)" hint text is gone) plus Back to
+  Invoices; template links kept (they are noprint, so print output
+  stays clean — the print stylesheet already hides sidebar,
+  topbar, bottom nav and noprint rows). Per-row Print links to
+  /invoices/<id>?print=1, which opens the view and auto-triggers
+  the print dialog (new print_auto flag on invoice_view; the
+  /sales/<id> and report callers default it off).
 
 ## Phase 2 (screen structure — NOT done, needs user direction)
 
