@@ -141,8 +141,10 @@ demo copy only:
   - CSV exports now UTF-8 BOM (all 6 CSV downloads; verified
     ef bb bf prefix). Bell unread count verified ALREADY working
     (real unread count, shown only when > 0).
-  - 11-item Reports menu UNTOUCHED — /reports/purchases is URL-only
-    until the user decides its menu placement.
+  - Reports menu (user decision 2026-10-27 ~08:31, "purchase report -
+    Report Page a thakbe"): the menu's "Purchase" item now points to
+    /reports/purchases (the real Purchase Report); the purchase list
+    stays reachable from the sidebar. Menu still 11 items.
   - Pre-existing gap noticed, left alone: purchase return-item does
     NOT validate against already-returned quantities (a purchase
     item can currently be returned twice); sales returns do validate.

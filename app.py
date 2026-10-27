@@ -6770,7 +6770,7 @@ class Handler(BaseHTTPRequestHandler):
         links = "".join(f'<h4 style="margin:14px 0 6px">{g}</h4><p>' +
                         "".join(f'<a class="btn" href="/reports/{s}">{n}</a> ' for s, n in items) + '</p>'
                         for g, items in groups)
-        menu = [("Sales", "receipt", "sales"), ("Purchase", "truck", "/purchases"),
+        menu = [("Sales", "receipt", "sales"), ("Purchase", "truck", "purchases"),
                 ("Inventory", "package", "inventory"), ("Customer", "users", "customer-dues"),
                 ("Supplier", "truck", "supplier-dues"), ("Expense", "wallet", "expense-cost"),
                 ("Income", "chart", "balance-sheet"), ("Profit & Loss", "chart", "profit-loss"),
