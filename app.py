@@ -301,6 +301,7 @@ def init_db():
         _add_col("products", "brand", "brand TEXT NOT NULL DEFAULT ''")
         _add_col("sales", "salesperson", "salesperson TEXT NOT NULL DEFAULT ''")
         _add_col("sales", "payment_method", "payment_method TEXT NOT NULL DEFAULT ''")
+        _add_col("sales", "note", "note TEXT NOT NULL DEFAULT ''")
         _add_col("sale_items", "discount", "discount REAL NOT NULL DEFAULT 0")
         _add_col("users", "name", "name TEXT NOT NULL DEFAULT ''")
         _add_col("purchases", "status", "status TEXT NOT NULL DEFAULT 'received'")
@@ -1355,7 +1356,7 @@ body.accent-orange{--primary:#ea580c;--primary-hover:#c2410c;--primary-light:#ff
 .v23-stat .vs.up{color:#16a34a}.v23-stat .vs.down{color:#dc2626}.v23-stat .vs.flat{color:#64748b}
 .v23-spark{display:flex;align-items:flex-end;gap:2px;height:26px;margin-top:8px}
 .v23-spark span{flex:1;border-radius:2px 2px 0 0;background:#bbf7d0;min-height:2px}
-@media(min-width:768px){.v23-stats{display:grid;grid-template-columns:repeat(5,1fr);overflow:visible}.v23-stat{flex:none}}
+@media(min-width:768px){.v23-stats{display:grid;grid-template-columns:repeat(4,1fr);overflow:visible}.v23-stat{flex:none}}
 .v23-grid2{display:grid;grid-template-columns:1fr;gap:12px;margin:12px 0}
 @media(min-width:768px){.v23-grid2{grid-template-columns:1.5fr 1fr}}
 .v23-grid2 .card,.v23-stats .v23-stat{margin:0}
@@ -1378,6 +1379,58 @@ body.accent-orange{--primary:#ea580c;--primary-hover:#c2410c;--primary-light:#ff
 .bottomnav .scan-raised .ico{width:56px;height:56px;border-radius:50%;background:#16a34a;color:#fff;display:flex;align-items:center;justify-content:center;transform:translateY(-16px);box-shadow:0 6px 16px rgba(22,163,74,.5);margin-bottom:-12px}}
 body.dark .v23-stat,body.dark .v23-tile{background:#1e293b;border-color:#334155}
 body.dark .v23-toggle a{background:#334155;color:#e2e8f0}
+/* BOARD (mobile UI board) — search pills, filter pills, icon tiles, status
+   pills, full-width action buttons, icon lists, hub menus, bar charts. */
+.topback{display:none;background:none;border:0;color:#0f172a;cursor:pointer;padding:4px;line-height:0}
+.mobtitle{display:none;font-size:17px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.mobsearch{display:none;color:#0f172a;line-height:0;flex-shrink:0;padding:4px}
+.bd-search{display:flex;align-items:center;gap:8px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:10px 14px;margin:0 0 12px}
+.bd-search svg{color:#94a3b8;flex-shrink:0}
+.bd-search input{border:0;background:transparent;padding:0;min-height:0;width:100%;font-size:14px}
+.bd-search input:focus{outline:none;box-shadow:none}
+.bd-pills{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+.bd-pills a{padding:7px 16px;border-radius:999px;background:#fff;border:1px solid #e2e8f0;color:#475569;text-decoration:none;font-size:13px;font-weight:700}
+.bd-pills a.on{background:#16a34a;border-color:#16a34a;color:#fff}
+.tile-ic{width:40px;height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:#dcfce7;color:#15803d}
+.tile-ic.blue{background:#dbeafe;color:#1d4ed8}.tile-ic.amber{background:#fef3c7;color:#92400e}
+.tile-ic.red{background:#fee2e2;color:#b91c1c}.tile-ic.violet{background:#ede9fe;color:#6d28d9}
+.tile-ic.grey{background:#f1f5f9;color:#475569}
+.pill.paid{background:#dcfce7;color:#15803d}.pill.due{background:#fee2e2;color:#b91c1c}
+.pill.partial{background:#ffedd5;color:#c2410c}.pill.low{background:#fef3c7;color:#92400e}
+.pr{color:#16a34a;font-weight:800}
+.stock-ok{color:#16a34a;font-weight:800}.stock-low{color:#d97706;font-weight:800}.stock-out{color:#dc2626;font-weight:800}
+.btn-block{display:block;width:100%;text-align:center;padding:14px;font-size:15px;font-weight:800;border-radius:14px}
+.bd-menu{display:flex;flex-direction:column;gap:2px}
+.bd-menu a{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid #f1f5f9;text-decoration:none;color:#0f172a}
+.bd-menu a:last-child{border-bottom:0}
+.bd-menu .lbl{flex:1;font-weight:700;font-size:14px}
+.bd-menu .chev{color:#94a3b8;font-size:18px}
+.bd-hub{display:flex;gap:14px;align-items:center}
+.bd-avatar{width:64px;height:64px;border-radius:50%;background:#16a34a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;flex-shrink:0}
+.bd-bars{display:flex;align-items:flex-end;gap:8px;height:120px;padding:8px 4px 0;border-bottom:1px solid #e2e8f0}
+.bd-bars .bar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.bd-bars .bar i{display:block;width:100%;max-width:26px;border-radius:6px 6px 0 0;background:#16a34a}
+.bd-bars .bar span{font-size:10px;color:#64748b;margin-top:4px;white-space:nowrap}
+.bd-summary{border-top:1px solid #f1f5f9;margin-top:12px;padding-top:8px}
+.bd-summary .row{display:flex;justify-content:space-between;padding:6px 0;font-size:14px}
+.bd-summary .row.total{font-weight:900;font-size:16px;border-top:1px solid #e2e8f0;margin-top:6px;padding-top:10px}
+.bd-summary .due{color:#dc2626;font-weight:800}
+.bd-cartrow{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center;padding:12px 0;border-bottom:1px solid #f1f5f9}
+.bd-cartrow .meta{font-size:12px;color:#64748b}
+.bd-cartrow .row-total{font-weight:800;color:#16a34a;text-align:right}
+.stepper{display:inline-flex;align-items:center;gap:0;border:1px solid #e2e8f0;border-radius:999px;overflow:hidden}
+.stepper button{min-height:32px!important;padding:4px 12px!important;background:#f8fafc;border:0;font-weight:900;font-size:16px;cursor:pointer}
+.stepper input{border:0!important;background:#fff!important;text-align:center;width:52px!important;padding:6px 2px!important;min-height:0!important}
+.line-remove{background:none;border:0;color:#dc2626;font-size:20px;cursor:pointer;padding:2px 6px}
+@media(max-width:767px){
+main>h1{display:none}
+.topbar .topbrand{display:none}
+.topbar .searchwrap{display:none}
+.topbar.inner .hamburger{display:none}
+.topbar.inner .topback{display:inline-flex}
+.mobtitle{display:block}
+.mobsearch{display:inline-flex}
+}
 """
 
 
@@ -2814,9 +2867,12 @@ def page(user, biz, title, body, extra="", show_h1=True):
             f"<body class='tpl-{invoice_template_setting()}{dark}{accent_cls}'>" + loader +
             f"<div class='layout'><div class='drawer-overlay' id='drawer-overlay' onclick='toggleDrawer(false)'></div>"
             f"<aside class='sidebar' id='sidebar'>{sidebar}</aside>"
-            f"<div class='maincol'><div class='topbar'><button type='button' class='hamburger' onclick='toggleDrawer(true)'>{icon('menu', 22)}</button>"
+            f"<div class='maincol'><div class='topbar{' inner' if active != 'dashboard' else ''}'><button type='button' class='hamburger' onclick='toggleDrawer(true)'>{icon('menu', 22)}</button>"
+            f"<button type='button' class='topback' onclick='history.back()' aria-label='Back'>&#8592;</button>"
+            f"<span class='mobtitle'>{esc(title_t)}</span>"
             f"<span class='topbrand'><span class='topmark'>{icon('building', 20)}</span><span class='topword'>LABH<span class='tag'>Smart Business Manager</span></span></span>"
             f"{search}"
+            f"<a class='mobsearch' href='/search' aria-label='Search'>{icon('search', 22)}</a>"
             f"{bell}"
             f"<span class='who'>{who}</span></div>"
             f"<main>{'' if not show_h1 else f'<h1>{esc(title_t)}</h1>'}{body}</main></div>{bottomnav}</div>{drawer_js}{extra}</body></html>")
@@ -4548,23 +4604,28 @@ class Handler(BaseHTTPRequestHandler):
 
         def _stat(lbl, val, cur_v, prev_v, ic, chip_bg, spark_vals, spark_color):
             _txt, _cls = _vs23(cur_v, prev_v)
+            if _txt == "new":
+                _disp, _cls = "↗ 100%", "up"
+            elif _cls == "up":
+                _disp = "↗ " + _txt.lstrip("+")
+            elif _cls == "down":
+                _disp = "↘ " + _txt.lstrip("-")
+            else:
+                _disp = _txt
             return (f'<div class="v23-stat"><div class="chip" style="background:{chip_bg}">{icon(ic, 20)}</div>'
                     f'<div class="lbl">{lbl}</div><div class="val">{val}</div>'
-                    f'<div class="vs {_cls}">{_txt} vs yesterday</div>{_spark(spark_vals, spark_color)}</div>')
+                    f'<div class="vs {_cls}">{_disp}</div>{_spark(spark_vals, spark_color)}</div>')
 
         stats_html = ('<div class="kpi-row v23-stats">'
                       + _stat("Total Sales", money(tdy["sales"], cur), tdy["sales"], ydy["sales"], "chart", "#ECFDF5", _sp_sales, "#16a34a")
                       + _stat("Total Profit", money(tdy["profit"], cur), tdy["profit"], ydy["profit"], "money", "#EFF6FF", _sp_profit, "#2563eb")
-                      + _stat("Total Cost", money(tdy["cost"], cur), tdy["cost"], ydy["cost"], "wallet", "#FFF1F2", _sp_cost, "#f59e0b")
                       + _stat("Total Due", money(tdy["due"], cur), tdy["due"], ydy["due"], "file", "#FFFBEB", _sp_due, "#dc2626")
                       + _stat("Total Orders", str(tdy["orders"]), tdy["orders"], ydy["orders"], "receipt", "#F5F3FF", _sp_orders, "#9333ea")
                       + '</div>')
         banner = (f'<div class="m-banner v23-banner"><div><div class="greet">{greet2}{greet_name}! \U0001f44b</div>'
-                  f'<div class="sub">Keep going! Your business is on track.</div>'
                   f'<span class="v23-datepill">{td.strftime("%a, %d %b %Y")}</span> '
-                  f'<form method="get" action="/dashboard" style="display:inline"><select name="period" onchange="this.form.submit()">{period_sel}</select></form></div>'
-                  f'<div class="v23-quote"><b>Discipline Today<br>Bigger Tomorrow</b>'
-                  f'<div class="v23-bars"><span style="height:16px"></span><span style="height:24px"></span><span style="height:30px"></span><span style="height:38px"></span><span style="height:44px"></span></div></div></div>')
+                  f'<span class="v23-datepill">{esc(period_label)}</span> '
+                  f'<form method="get" action="/dashboard" style="display:inline"><select name="period" onchange="this.form.submit()">{period_sel}</select></form></div></div>')
         # --- trend chart: Daily / Weekly / Monthly toggle (Sales green,
         # Profit blue, axes + date labels + hover values on both series).
         trend = qs.get("trend", ["daily"])[0]
@@ -4938,9 +4999,20 @@ class Handler(BaseHTTPRequestHandler):
             set_setting("notif_overdue", "0" if self.fv(form, "notif_overdue") == "0" else "1")
             set_setting("auto_sync", "0" if self.fv(form, "auto_sync") == "0" else "1")
             return self.redirect("/settings")
-        body = ('<div class="card">' + form_start("/settings", user["_csrf"])
+        menu_items = [("Business Information", "building", "#business"), ("Currency Settings", "money", "#currency"),
+                      ("Application Settings", "settings", "#app"), ("Barcode Settings", "scan", "#barcode"),
+                      ("Print Settings", "receipt", "#print"), ("User Management", "users", "/settings/users"),
+                      ("Backup & Restore", "file", "/backup"), ("About App", "shield", "#about")]
+        menu_html = "".join(
+            f'<a href="{href}"><span class="tile-ic">{icon(ic, 18)}</span><span class="lbl">{esc(n)}</span><span class="chev">&#8250;</span></a>'
+            for n, ic, href in menu_items)
+        body = (f'<div class="card"><h3>Settings</h3><div class="bd-menu">{menu_html}</div></div>'
+                '<div class="card">' + form_start("/settings", user["_csrf"])
+                + '<div id="business"></div>'
                 + field("Business name", "name", biz["name"], "text", True)
+                + '<div id="currency"></div>'
                 + field("Currency (e.g. BDT, USD)", "currency", cur)
+                + '<div id="language"></div>'
                 + f'<p><label>Language / ভাষা</label><br><select name="lang"><option value="en"{" selected" if get_setting("lang") != "bn" else ""}>English</option><option value="bn"{" selected" if get_setting("lang") == "bn" else ""}>Bangla (বাংলা)</option></select></p>'
                 + f'<p><label>Tax &amp; VAT</label><br><select name="tax_enabled"><option value="0"{" selected" if get_setting("tax_enabled") != "1" else ""}>Disabled</option><option value="1"{" selected" if get_setting("tax_enabled") == "1" else ""}>Enabled</option></select></p>'
                 + field("Tax / VAT rate (%)", "tax_rate", get_setting("tax_rate") or "0", "number")
@@ -4978,17 +5050,18 @@ class Handler(BaseHTTPRequestHandler):
                 + esc(get_setting("last_sync_ts") or "never")
                 + ' · Status: ' + esc(get_setting("last_sync_status") or "—")
                 + ' · Error: ' + esc(get_setting("last_sync_error") or "—") + '</p>'
-                + f'<div class="card"><h3>Theme &amp; Appearance</h3>'
+                + f'<div class="card" id="app"><h3>Theme &amp; Appearance</h3>'
                 + f'<p><label>Mode</label><br><select name="theme_mode"><option value="light"{" selected" if get_setting("theme_mode") != "dark" else ""}>Light</option><option value="dark"{" selected" if get_setting("theme_mode") == "dark" else ""}>Dark</option></select></p>'
                 + f'<p><label>Accent colour</label><br><select name="accent">' + "".join(f'<option value="{v}"{" selected" if (get_setting("accent") or "labh-green") == v else ""}>{l}</option>' for v, l in [("labh-green", "LABH Green"), ("ocean-blue", "Ocean Blue"), ("royal-purple", "Royal Purple"), ("rose", "Rose"), ("orange", "Orange")]) + '</select></p></div>'
-                + f'<div class="card"><h3>Invoice Templates</h3>'
+                + f'<div class="card" id="print"><h3>Invoice Templates</h3>'
                 + f'<p><label>Default invoice template</label><br><select name="invoice_template">' + "".join(f'<option value="{v}"{" selected" if invoice_template_setting() == v else ""}>{l}</option>' for v, l in [("modern", "Modern (green header)"), ("classic", "Classic"), ("minimal", "Minimal"), ("bold", "Bold"), ("receipt", "Receipt")]) + '</select></p>'
                 + f'<p><label>Payment methods (comma-separated, used in POS &amp; New Sale)</label><br><input type="text" name="payment_methods" value="{esc(",".join(payment_methods_setting()))}"></p></div>'
-                + f'<div class="card"><h3>Notification preferences</h3>'
+                + f'<div class="card" id="notif"><h3>Notification preferences</h3>'
                 + f'<p><label>Low-stock alerts</label><br><select name="notif_low_stock"><option value="1"{" selected" if get_setting("notif_low_stock") != "0" else ""}>On</option><option value="0"{" selected" if get_setting("notif_low_stock") == "0" else ""}>Off</option></select></p>'
                 + f'<p><label>Overdue-due alerts</label><br><select name="notif_overdue"><option value="1"{" selected" if get_setting("notif_overdue") != "0" else ""}>On</option><option value="0"{" selected" if get_setting("notif_overdue") == "0" else ""}>Off</option></select></p>'
                 + f'<p><label>Auto-sync with Google Drive</label><br><select name="auto_sync"><option value="1"{" selected" if get_setting("auto_sync") != "0" else ""}>On — Google sign-in downloads the Drive backup automatically</option><option value="0"{" selected" if get_setting("auto_sync") == "0" else ""}>Off — Google sign-in never downloads automatically</option></select></p></div>'
-                + '<div class="card"><h3>Settings tabs</h3><p>Theme &amp; Appearance, Business &amp; Store, Invoice Config, Payment Methods, Tax &amp; VAT, Staff Management, Notifications, Language, Backup &amp; Restore, Invoice Templates — all on this page. There is no subscription or paywall in LABH.</p></div>'
+                + f'<div class="card" id="about"><h3>About App</h3><p>LABH — Smart Business Manager, version {VERSION}. Theme &amp; Appearance, Business &amp; Store, Invoice Config, Payment Methods, Tax &amp; VAT, Staff Management, Notifications, Language, Backup &amp; Restore, Invoice Templates — all on this page. There is no subscription or paywall in LABH.</p></div>'
+                + '<div class="card" id="barcode"><h3>Barcode settings</h3><p>Barcodes are stored on each product (see <a href="/products">Products</a>) and scanned from the <a href="/scan">Scan</a> page. There is no separate barcode setting — the scanner reads the barcode saved on the product.</p></div>'
                 + '<button type="submit">Save settings</button></form></div>'
                 + '<div class="card"><a class="btn" href="/settings/users">Manage users</a> '
                 + '<a class="btn" href="/settings/permissions">Staff permission matrix</a> '
@@ -5003,7 +5076,7 @@ class Handler(BaseHTTPRequestHandler):
     def crud_list(self, user, biz, cur, title, headers, rows_html, new_url, new_label):
         body = f'<div class="card">{table(headers, rows_html)}</div>'
         if user["role"] in ("owner", "admin"):
-            body += f'<div class="card noprint"><a class="btn" href="{new_url}">{esc(new_label)}</a></div>'
+            body += f'<div class="card noprint"><a class="btn btn-block" href="{new_url}">{esc(new_label)}</a></div>'
         return self.send_html(200, page(user, biz, title, body))
 
     def view_categories(self, user, biz, cur, parts, method):
@@ -5030,14 +5103,39 @@ class Handler(BaseHTTPRequestHandler):
     def view_products(self, user, biz, cur, parts, method):
         b = user["business_id"]
         if len(parts) == 1 and method == "GET":
+            qs = parse_qs(urlparse(self.path).query)
+            qterm = qs.get("q", [""])[0].strip().lower()
+            stock_f = qs.get("stock", ["all"])[0]
             rows = q("""SELECT p.*, c.name AS cat FROM products p LEFT JOIN categories c ON c.id=p.category_id
                         WHERE p.business_id=? ORDER BY p.name""", (b,))
+            if qterm:
+                rows = [r for r in rows if qterm in r["name"].lower() or qterm in (r["sku"] or "").lower()
+                        or qterm in (r["barcode"] or "").lower() or qterm in (r["cat"] or "").lower()]
+            if stock_f == "in":
+                rows = [r for r in rows if r["stock"] > r["low_stock"]]
+            elif stock_f == "low":
+                rows = [r for r in rows if 0 < r["stock"] <= r["low_stock"]]
+            elif stock_f == "out":
+                rows = [r for r in rows if r["stock"] <= 0]
+            def _stock_cls(r):
+                if r["stock"] <= 0:
+                    return "stock-out"
+                if r["stock"] <= r["low_stock"]:
+                    return "stock-low"
+                return "stock-ok"
             rh = "".join(
-                f"<tr><td><a href='/products/{r['id']}'>{esc(r['name'])}</a></td><td>{esc(r['sku'])}</td>"
-                f"<td>{esc(r['cat'])}</td><td>{money(r['selling_price'], cur)}</td><td>{r['stock']}</td></tr>"
-                for r in rows)
-            return self.crud_list(user, biz, cur, "Products", ["Name", "SKU", "Category", "Selling price", "Stock"],
-                                  rh, "/products/new", "+ New Product")
+                f"<tr><td>{i + 1}</td><td><span style='display:inline-flex;gap:8px;align-items:center'><span class='tile-ic'>{icon('package', 18)}</span><a href='/products/{r['id']}'>{esc(r['name'])}</a></span></td>"
+                f"<td>{esc(r['sku'])}{('<br><small>' + esc(r['barcode']) + '</small>') if r['barcode'] and r['barcode'] != r['sku'] else ''}</td>"
+                f"<td>{esc(r['cat'])}</td><td class='pr'>{money(r['selling_price'], cur)}</td><td class='{_stock_cls(r)}'>{r['stock']}</td></tr>"
+                for i, r in enumerate(rows))
+            pills = "".join(f'<a class="{"on" if stock_f == v else ""}" href="/products?stock={v}{("&amp;q=" + esc(qterm)) if qterm else ""}">{l}</a>'
+                            for v, l in [("all", "All"), ("in", "In Stock"), ("low", "Low Stock"), ("out", "Out of Stock")])
+            search = (f'<form method="get" action="/products"><input type="hidden" name="stock" value="{esc(stock_f)}"><div class="bd-search">{icon("search", 18)}<input type="text" name="q" placeholder="Search products…" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>'
+                      f'<div class="bd-pills">{pills}</div>')
+            body = f'<div class="card">{search}{table(["#", "Product", "SKU-Barcode", "Category", "Price", "Stock"], rh)}</div>'
+            if user["role"] in ("owner", "admin"):
+                body += '<div class="card noprint"><a class="btn btn-block" href="/products/new">+ New Product</a></div>'
+            return self.send_html(200, page(user, biz, "Products", body))
         if len(parts) == 2 and parts[1] == "new":
             if method == "POST":
                 self.require_role(user, "owner", "admin")
@@ -5163,12 +5261,61 @@ class Handler(BaseHTTPRequestHandler):
                     (b, prod["id"], kind, qty, self.fv(form, "note").strip(), today(), now_iso()))
             return self.redirect("/inventory")
         rows = q("SELECT * FROM products WHERE business_id=? ORDER BY name", (b,))
-        rh = "".join(f"<tr><td>{esc(r['name'])}</td><td>{r['stock']}</td><td>{money(r['stock'] * r['purchase_price'], cur)}</td></tr>" for r in rows)
+        qs = parse_qs(urlparse(self.path).query)
+        qterm = qs.get("q", [""])[0].strip().lower()
+        stock_f = qs.get("stock", ["all"])[0]
+        # In/Out from recorded purchases, sales and manual movements; transfers
+        # move stock between locations and do not change the total.
+        pur_q = {r["pid"]: r["v"] for r in q("SELECT product_id AS pid, COALESCE(SUM(qty),0) AS v FROM purchase_items pi JOIN purchases p ON p.id=pi.purchase_id WHERE p.business_id=? GROUP BY product_id", (b,))}
+        sal_q = {r["pid"]: r["v"] for r in q("SELECT product_id AS pid, COALESCE(SUM(qty),0) AS v FROM sale_items si JOIN sales s ON s.id=si.sale_id WHERE s.business_id=? GROUP BY product_id", (b,))}
+        mov_in = {r["pid"]: r["v"] for r in q("SELECT product_id AS pid, COALESCE(SUM(qty),0) AS v FROM stock_movements WHERE business_id=? AND kind='in' GROUP BY product_id", (b,))}
+        mov_out = {r["pid"]: r["v"] for r in q("SELECT product_id AS pid, COALESCE(SUM(qty),0) AS v FROM stock_movements WHERE business_id=? AND kind='out' GROUP BY product_id", (b,))}
+        inv = []
+        for r in rows:
+            inn = pur_q.get(r["id"], 0) + mov_in.get(r["id"], 0)
+            out = sal_q.get(r["id"], 0) + mov_out.get(r["id"], 0)
+            inv.append((r, r["stock"] - inn + out, inn, out))
+        if qterm:
+            inv = [x for x in inv if qterm in x[0]["name"].lower() or qterm in (x[0]["sku"] or "").lower()]
+        if stock_f == "in":
+            inv = [x for x in inv if x[0]["stock"] > x[0]["low_stock"]]
+        elif stock_f == "low":
+            inv = [x for x in inv if 0 < x[0]["stock"] <= x[0]["low_stock"]]
+        elif stock_f == "out":
+            inv = [x for x in inv if x[0]["stock"] <= 0]
+        def _inv_cls(r):
+            if r["stock"] <= 0:
+                return "stock-out"
+            if r["stock"] <= r["low_stock"]:
+                return "stock-low"
+            return "stock-ok"
+        rh = "".join(
+            f"<tr><td>{i + 1}</td><td><span style='display:inline-flex;gap:8px;align-items:center'><span class='tile-ic'>{icon('package', 18)}</span><a href='/products/{r['id']}'>{esc(r['name'])}</a></span></td>"
+            f"<td>{o:g}</td><td>{inn:g}</td><td>{out:g}</td><td class='{_inv_cls(r)}'>{r['stock']:g}</td><td class='pr'>{money(r['stock'] * r['purchase_price'], cur)}</td></tr>"
+            for i, (r, o, inn, out) in enumerate(inv))
+        total_products = len(rows)
+        total_stock = sum(r["stock"] for r in rows)
+        stock_value = sum(r["stock"] * r["purchase_price"] for r in rows)
+        low_n = sum(1 for r in rows if 0 < r["stock"] <= r["low_stock"])
+        out_n = sum(1 for r in rows if r["stock"] <= 0)
+        pills = "".join(f'<a class="{"on" if stock_f == v else ""}" href="/inventory?stock={v}{("&amp;q=" + esc(qterm)) if qterm else ""}">{l}</a>'
+                        for v, l in [("all", "All"), ("in", "In Stock"), ("low", "Low Stock"), ("out", "Out of Stock")])
+        search = (f'<form method="get" action="/inventory"><input type="hidden" name="stock" value="{esc(stock_f)}"><div class="bd-search">{icon("search", 18)}<input type="text" name="q" placeholder="Search inventory…" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>'
+                  f'<div class="bd-pills">{pills}</div>')
+        summary = (f'<div class="card"><h3>Stock Summary</h3><div class="v23-tiles">'
+                   f'<div class="v23-tile"><div class="lbl">Total Products</div><div class="val">{total_products}</div></div>'
+                   f'<div class="v23-tile"><div class="lbl">Total Stock</div><div class="val">{total_stock:g}</div></div>'
+                   f'<div class="v23-tile"><div class="lbl">Stock Value</div><div class="val">{money(stock_value, cur)}</div></div></div>'
+                   f'<p><span class="pill low">Low Stock: {low_n}</span> <span class="pill due">Out of Stock: {out_n}</span></p></div>')
+        body = (f'<div class="card"><h3>Inventory</h3>{search}' + table(["#", "Product", "Opening", "In", "Out", "Current", "Value"], rh)
+                + '<p style="color:#64748b;font-size:12px">Opening = Current &minus; In + Out, derived from recorded purchases, sales and manual stock movements.</p></div>'
+                + summary)
+        if user["role"] in ("owner", "admin"):
+            body += '<div class="card noprint"><a class="btn btn-block" href="/products/new">+ Add Product</a></div>'
         moves = q("""SELECT m.*, p.name AS pname FROM stock_movements m JOIN products p ON p.id=m.product_id
                      WHERE m.business_id=? ORDER BY m.id DESC LIMIT 30""", (b,))
         mh = "".join(f"<tr><td>{esc(m['move_date'])}</td><td>{esc(m['pname'])}</td><td>{esc(m['kind'])}</td><td>{m['qty']}</td></tr>" for m in moves)
         opts = "".join(f'<option value="{r["id"]}">{esc(r["name"])} (stock {r["stock"]})</option>' for r in rows)
-        body = ('<div class="card"><h3>Stock levels</h3>' + table(["Product", "Stock", "Stock value (cost)"], rh) + '</div>')
         if user["role"] in ("owner", "admin"):
             body += ('<div class="card"><h3>Stock in / out</h3>' + form_start("/inventory", user["_csrf"])
                      + f'<p><label>Product</label><br><select name="product_id" required>{opts}</select></p>'
@@ -5190,14 +5337,24 @@ class Handler(BaseHTTPRequestHandler):
     def _party_list(self, user, biz, cur, kind, title, new_label):
         b = user["business_id"]
         table_name = "customers" if kind == "customer" else "suppliers"
+        qs = parse_qs(urlparse(self.path).query)
+        qterm = qs.get("q", [""])[0].strip().lower()
         rows = q(f"SELECT * FROM {table_name} WHERE business_id=? ORDER BY name", (b,))
+        if qterm:
+            rows = [r for r in rows if qterm in r["name"].lower() or qterm in (r["phone"] or "").lower()]
         rh = ""
         for r in rows:
             due = customer_due(b, r["id"]) if kind == "customer" else supplier_due(b, r["id"])
-            rh += (f"<tr><td><a href='/{kind}s/{r['id']}'>{esc(r['name'])}</a></td>"
-                   f"<td>{esc(r['phone'])}</td><td>{esc(r['email'])}</td><td>{money(due, cur)}</td></tr>")
-        return self.crud_list(user, biz, cur, title, ["Name", "Phone", "Email", "Due"], rh,
-                              f"/{kind}s/new", new_label)
+            initials = "".join(w[0] for w in r["name"].split()[:2]).upper() if r["name"] else "?"
+            tint = " blue" if kind == "supplier" else ""
+            due_cls = "pr" if due <= 0 else "stock-out"
+            rh += (f"<tr><td><span style='display:inline-flex;gap:8px;align-items:center'><span class='tile-ic{tint}'>{esc(initials)}</span><a href='/{kind}s/{r['id']}'>{esc(r['name'])}</a></span></td>"
+                   f"<td>{esc(r['phone'])}</td><td class='{due_cls}'>{money(due, cur)}</td></tr>")
+        search = (f'<form method="get" action="/{kind}s"><div class="bd-search">{icon("search", 18)}<input type="text" name="q" placeholder="Search {kind}s…" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>')
+        body = f'<div class="card">{search}' + table(["Name", "Phone", "Due"], rh) + '</div>'
+        if user["role"] in ("owner", "admin"):
+            body += f'<div class="card noprint"><a class="btn btn-block" href="/{kind}s/new">{esc(new_label)}</a></div>'
+        return self.send_html(200, page(user, biz, title, body))
 
     def _party_detail(self, user, biz, cur, kind, row_id, method):
         b = user["business_id"]
@@ -5300,7 +5457,10 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- sales / purchases / invoices
     def _lines_form(self, form, user):
-        """Parse indexed sale/purchase lines; returns (items, error)."""
+        """Parse indexed sale/purchase lines; returns (items, error).
+        Each item is (product, qty, price, discount); discount defaults to 0
+        and is clamped to the line total, so callers that ignore it behave
+        exactly as before."""
         b = user["business_id"]
         items = []
         for i in range(30):
@@ -5313,20 +5473,50 @@ class Handler(BaseHTTPRequestHandler):
             price = float(price) if price else prod["selling_price"]
             if qty <= 0:
                 return None, "Quantity must be positive."
-            items.append((prod, qty, price))
+            disc = float(self.fv(form, f"discount_{i}") or 0)
+            disc = max(0.0, min(disc, qty * price))
+            items.append((prod, qty, price, disc))
         if not items:
             return None, "Add at least one item."
         return items, None
 
-    def _line_picker(self, products, cur):
-        opts = "".join(f'<option value="{p["id"]}">{esc(p["name"])} - {money(p["selling_price"], cur)} (stock {p["stock"]})</option>' for p in products)
-        row = (f'<div class="line"><p><select name="product_0" required>{opts}</select> '
-               f'Qty <input type="number" step="any" name="qty_0" value="1" style="width:90px" required> '
-               f'Price <input type="number" step="any" name="price_0" style="width:120px"></p></div>')
-        js = ("<script>let n=1;function addLine(){let d=document.createElement('div');"
-              "d.className='line';d.innerHTML=document.querySelector('.line').innerHTML"
-              ".replace(/product_0/g,'product_'+n).replace(/qty_0/g,'qty_'+n).replace(/price_0/g,'price_'+n);"
-              "document.getElementById('lines').appendChild(d);n++;}</script>")
+    def _line_picker(self, products, cur, with_discount=False):
+        opts = "".join(f'<option value="{p["id"]}" data-price="{p["selling_price"]}">{esc(p["name"])} - {money(p["selling_price"], cur)} (stock {p["stock"]})</option>' for p in products)
+        disc_html = ' <input type="number" step="any" name="discount_0" value="0" placeholder="Discount" style="width:90px">' if with_discount else ""
+        total_html = ' <span class="row-total"></span>' if with_discount else ""
+        row = (f'<div class="line bd-cartrow"><div><select name="product_0" required>{opts}</select> '
+               f'<div style="display:flex;gap:8px;align-items:center;margin-top:8px">'
+               f'<span class="stepper"><button type="button" onclick="stepQty(this,-1)">&#8722;</button><input type="number" step="any" name="qty_0" value="1" required><button type="button" onclick="stepQty(this,1)">+</button></span>'
+               f' <input type="number" step="any" name="price_0" placeholder="Price" style="width:110px">{disc_html}</div></div>'
+               f'<div style="text-align:right">{total_html} <button type="button" class="line-remove" onclick="removeLine(this)" aria-label="Remove line">&times;</button></div></div>')
+        js = ("<script>let n=1;"
+              "function addLine(){let d=document.createElement('div');d.className='line bd-cartrow';"
+              "d.innerHTML=document.querySelector('.line').innerHTML"
+              ".replace(/product_0/g,'product_'+n).replace(/qty_0/g,'qty_'+n).replace(/price_0/g,'price_'+n).replace(/discount_0/g,'discount_'+n);"
+              "document.getElementById('lines').appendChild(d);n++;recalc();}"
+              "function removeLine(b){let ls=document.querySelectorAll('.line');"
+              "if(ls.length>1){b.closest('.line').remove();}else{b.closest('.line').querySelector('select').selectedIndex=0;}recalc();}"
+              "function stepQty(b,d){let inp=b.parentElement.querySelector('input');let v=parseFloat(inp.value||0)+d;if(v<1)v=1;inp.value=v;recalc();}"
+              "function fmtMoney(v){return '\\u09f3'+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}"
+              "function findProduct(){let q=document.getElementById('prod-search');if(!q)return;let t=q.value.trim().toLowerCase();if(!t)return;"
+              "let sels=document.querySelectorAll('#lines .line select');if(!sels.length)return;let sel=sels[sels.length-1];"
+              "for(let o of sel.options){if(o.text.toLowerCase().includes(t)){sel.value=o.value;break;}}recalc();}"
+              "function recalc(){let sub=0,disc=0,items=0;"
+              "document.querySelectorAll('.line').forEach(function(ln){let sel=ln.querySelector('select');"
+              "let q=parseFloat(ln.querySelector('[name^=qty_]').value||0);"
+              "let pv=ln.querySelector('[name^=price_]').value;let pr=parseFloat(pv);"
+              "if(isNaN(pr)){pr=sel.selectedOptions.length?parseFloat(sel.selectedOptions[0].dataset.price||0):0;}"
+              "let dc=ln.querySelector('[name^=discount_]');let d=dc?parseFloat(dc.value||0):0;"
+              "if(sel.value)items++;sub+=q*pr;disc+=d;"
+              "let rt=ln.querySelector('.row-total');if(rt)rt.textContent=fmtMoney(q*pr-d);});"
+              "let e=function(id){return document.getElementById(id);};"
+              "if(e('sum-sub'))e('sum-sub').textContent=fmtMoney(sub);"
+              "if(e('sum-disc'))e('sum-disc').textContent=fmtMoney(disc);"
+              "if(e('sum-total'))e('sum-total').textContent=fmtMoney(sub-disc);"
+              "if(e('sum-items'))e('sum-items').textContent=items;"
+              "if(e('sum-paid')&&e('sum-due')){let paid=parseFloat(document.querySelector('[name=paid]').value||0);"
+              "e('sum-paid').textContent=fmtMoney(paid);e('sum-due').textContent=fmtMoney(Math.max(0,sub-disc-paid));}}"
+              "document.addEventListener('input',recalc);recalc();</script>")
         return row, js
 
     def view_sales(self, user, biz, cur, parts, method):
@@ -5352,13 +5542,22 @@ class Handler(BaseHTTPRequestHandler):
                 rows = [r for r in rows if r["due"] <= 0]
             elif status == "due":
                 rows = [r for r in rows if r["due"] > 0]
+            def _status(r):
+                if r["due"] <= 0:
+                    return '<span class="pill paid">Paid</span>'
+                if r["paid"] > 0:
+                    return '<span class="pill partial">Partial</span>'
+                return '<span class="pill due">Due</span>'
             rh = "".join(f"<tr><td><a href='/sales/{r['id']}'>{esc(r['invoice_no'])}</a></td><td>{esc(r['cname'] or 'Walk-in')}</td>"
-                         f"<td>{esc(r['sale_date'])}</td><td>{money(r['total'], cur)}</td><td>{money(r['due'], cur)}</td></tr>" for r in rows)
-            filt = ('<div class="card"><form method="get" action="/sales">'
-                    f'<input type="search" name="q" placeholder="Search invoice/customer" value="{esc(qterm)}"> '
-                    '<select name="status"><option value="all">All</option><option value="paid">Paid</option><option value="due">Due</option></select> '
-                    '<button type="submit">Filter</button> <a class="btn secondary" href="/sales?export=csv">Export CSV</a></form></div>')
-            return self.send_html(200, page(user, biz, "Sales", filt + '<div class="card">' + table(["Invoice", "Customer", "Date", "Total", "Due"], rh) + '</div>'))
+                         f"<td>{esc(r['sale_date'])}</td><td class='pr'>{money(r['total'], cur)}</td><td>{money(r['due'], cur)}</td><td>{_status(r)}</td></tr>" for r in rows)
+            pills = "".join(f'<a class="{"on" if status == v else ""}" href="/sales?status={v}{("&amp;q=" + esc(qterm)) if qterm else ""}">{l}</a>'
+                            for v, l in [("all", "All"), ("paid", "Paid"), ("due", "Due")])
+            filt = (f'<div class="card"><form method="get" action="/sales"><input type="hidden" name="status" value="{esc(status)}"><div class="bd-search">{icon("search", 18)}<input type="search" name="q" placeholder="Search invoice/customer" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>'
+                    f'<div class="bd-pills">{pills}</div><p><a class="btn secondary" href="/sales?export=csv">Export CSV</a></p></div>')
+            body = filt + '<div class="card">' + table(["Invoice", "Customer", "Date", "Total", "Due", "Status"], rh) + '</div>'
+            if user["role"] in ("owner", "admin"):
+                body += '<div class="card noprint"><a class="btn btn-block" href="/sales/new">+ New Sale</a></div>'
+            return self.send_html(200, page(user, biz, "Sales", body))
         if len(parts) == 2 and parts[1] == "new":
             if method == "POST":
                 form = self.form()
@@ -5366,11 +5565,11 @@ class Handler(BaseHTTPRequestHandler):
                 items, err = self._lines_form(form, user)
                 if err:
                     return self.send_html(200, page(user, biz, "New Sale", f'<div class="card err">{esc(err)}</div>'))
-                for prod, qty, _ in items:
+                for prod, qty, _, _ in items:
                     if prod["stock"] < qty:
                         return self.send_html(200, page(user, biz, "New Sale",
                             f'<div class="card err">Not enough stock for {esc(prod["name"])} (have {prod["stock"]}).</div>'))
-                total = sum(qty * price for _, qty, price in items)
+                total = sum(qty * price - disc for _, qty, price, disc in items)
                 paid = max(0.0, min(float(self.fv(form, "paid") or 0), total))
                 cust = self.fv(form, "customer_id")
                 cust_id = int(cust) if cust else None
@@ -5378,12 +5577,13 @@ class Handler(BaseHTTPRequestHandler):
                     scoped_row("customers", cust_id, b)
                 sdate = self.fv(form, "sale_date").strip() or today()
                 sale_id = exec_db("""INSERT INTO sales(business_id,customer_id,invoice_no,total,paid,due,
-                                    sale_date,created_at,salesperson,payment_method) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                                    sale_date,created_at,salesperson,payment_method,note) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                                   (b, cust_id, next_invoice_no(b), total, paid, total - paid, sdate, now_iso(),
-                                   self.fv(form, "salesperson").strip(), self.fv(form, "payment_method").strip()))
-                for prod, qty, price in items:
-                    exec_db("INSERT INTO sale_items(sale_id,product_id,product_name,qty,price,amount,cost_price) VALUES(?,?,?,?,?,?,?)",
-                            (sale_id, prod["id"], prod["name"], qty, price, qty * price, prod["purchase_price"]))
+                                   self.fv(form, "salesperson").strip(), self.fv(form, "payment_method").strip(),
+                                   self.fv(form, "note").strip()))
+                for prod, qty, price, disc in items:
+                    exec_db("INSERT INTO sale_items(sale_id,product_id,product_name,qty,price,amount,cost_price,discount) VALUES(?,?,?,?,?,?,?,?)",
+                            (sale_id, prod["id"], prod["name"], qty, price, qty * price - disc, prod["purchase_price"], disc))
                     exec_db("UPDATE products SET stock=stock-? WHERE id=?", (qty, prod["id"]))
                     exec_db("INSERT INTO stock_movements(business_id,product_id,kind,qty,note,move_date,created_at) VALUES(?,?,?,?,?,?,?)",
                             (b, prod["id"], "sale", qty, f"Sale #{sale_id}", today(), now_iso()))
@@ -5391,18 +5591,26 @@ class Handler(BaseHTTPRequestHandler):
             products = q("SELECT * FROM products WHERE business_id=? ORDER BY name", (b,))
             custs = q("SELECT id, name FROM customers WHERE business_id=? ORDER BY name", (b,))
             copts = '<option value="">Walk-in</option>' + "".join(f'<option value="{c["id"]}">{esc(c["name"])}</option>' for c in custs)
-            row, js = self._line_picker(products, cur)
+            row, js = self._line_picker(products, cur, with_discount=True)
             pm_opts = "".join(f'<option value="{m}">{esc(m)}</option>' for m in payment_methods_setting())
             body = ('<div class="card">' + form_start("/sales/new", user["_csrf"])
-                    + f'<p><label>Customer</label><br><select name="customer_id">{copts}</select></p>'
+                    + f'<p><label>Customer</label><br><select name="customer_id">{copts}</select> <a class="btn secondary" href="/customers/new">+ New customer</a></p>'
                     + field("Salesperson", "salesperson") + field("Sale date", "sale_date", today(), "date")
                     + f'<p>Auto invoice number: <b>{esc(next_invoice_no(b))}</b></p>'
-                    + f'<p><label>Payment method</label><br><select name="payment_method">{pm_opts}</select></p>'
-                    + '<p>Price-type pills: choose DP / RP / MRP / Wholesale on the POS page, or enter a manual price per line here.</p>'
+                    + '<div class="bd-search">' + icon("search", 18) + '<input type="text" id="prod-search" placeholder="Search products…" onkeydown="if(event.key===\'Enter\'){event.preventDefault();findProduct();}"><button type="button" class="btn secondary" onclick="findProduct()">Find</button> <a class="btn secondary" href="/scan">Scan</a></div>'
                     + '<div id="lines">' + row + '</div>'
-                    + '<p><button type="button" onclick="addLine()">+ Add line</button></p>'
+                    + '<p><button type="button" class="secondary" onclick="addLine()">+ Add line</button></p>'
+                    + '<div class="bd-summary"><div class="row"><span>Items</span><span id="sum-items">0</span></div>'
+                    + '<div class="row"><span>Subtotal</span><span id="sum-sub">৳0.00</span></div>'
+                    + '<div class="row"><span>Discount</span><span id="sum-disc">৳0.00</span></div>'
+                    + '<div class="row total"><span>Total</span><span id="sum-total">৳0.00</span></div>'
+                    + '<div class="row"><span>Paid Amount</span><span id="sum-paid">৳0.00</span></div>'
+                    + '<div class="row"><span>Due Amount</span><span class="due" id="sum-due">৳0.00</span></div></div>'
                     + field("Paid amount", "paid", "0", "number")
-                    + '<button type="submit">Save sale &amp; create invoice</button></form></div>')
+                    + f'<p><label>Payment method</label><br><select name="payment_method">{pm_opts}</select></p>'
+                    + field("Note", "note")
+                    + '<p>Price-type pills: choose DP / RP / MRP / Wholesale on the POS page, or enter a manual price per line here.</p>'
+                    + '<button type="submit" class="btn-block">✓ Complete Sale</button></form></div>')
             return self.send_html(200, page(user, biz, "New Sale", body, extra=js))
         if len(parts) == 2 and parts[1].isdigit():
             return self.invoice_view(user, biz, cur, int(parts[1]))
@@ -5415,7 +5623,13 @@ class Handler(BaseHTTPRequestHandler):
         sale = scoped_row("sales", sale_id, b)
         cust = q("SELECT name FROM customers WHERE id=?", (sale["customer_id"],), one=True) if sale["customer_id"] else None
         items = q("SELECT * FROM sale_items WHERE sale_id=?", (sale_id,))
-        rh = "".join(f"<tr><td>{esc(i['product_name'])}</td><td>{i['qty']}</td><td>{money(i['price'], cur)}</td><td>{money(i['amount'], cur)}</td></tr>" for i in items)
+        _note = sale["note"] if "note" in sale.keys() else ""
+        if any(i["discount"] for i in items):
+            rh = "".join(f"<tr><td>{esc(i['product_name'])}</td><td>{i['qty']}</td><td>{money(i['price'], cur)}</td><td>{money(i['discount'], cur)}</td><td>{money(i['amount'], cur)}</td></tr>" for i in items)
+            _cols = ["Item", "Qty", "Price", "Discount", "Amount"]
+        else:
+            rh = "".join(f"<tr><td>{esc(i['product_name'])}</td><td>{i['qty']}</td><td>{money(i['price'], cur)}</td><td>{money(i['amount'], cur)}</td></tr>" for i in items)
+            _cols = ["Item", "Qty", "Price", "Amount"]
         if template == "modern":
             head = f'<div style="background:#15803d;color:#fff;padding:14px;border-radius:12px 12px 0 0"><b>LABH</b> — {esc(biz["name"])}</div>'
         elif template == "bold":
@@ -5428,7 +5642,8 @@ class Handler(BaseHTTPRequestHandler):
             head = f'<div><b>{esc(biz["name"])}</b> — Invoice</div>' 
         body = (f'<div class="card">{head}<h2>Invoice {esc(sale["invoice_no"])}</h2>'
                 f'<p>Business: {esc(biz["name"])}<br>Customer: {esc(cust["name"]) if cust else "Walk-in"}<br>Date: {esc(sale["sale_date"])}</p>'
-                + table(["Item", "Qty", "Price", "Amount"], rh)
+                + (f'<p>Note: {esc(_note)}</p>' if _note else "")
+                + table(_cols, rh)
                 + f'<p>Total: {money(sale["total"], cur)}<br>Paid: {money(sale["paid"], cur)}<br>Due: {money(sale["due"], cur)}</p>'
                 + f'<p class="noprint">Templates: <a class="btn" href="/invoices/{sale["id"]}?template=modern">Modern</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=classic">Classic</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=minimal">Minimal</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=bold">Bold</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=receipt">Receipt</a> — set the default in Settings &gt; Invoice Templates. Use browser Print (Ctrl+P) to print.</p></div>')
         return self.send_html(200, page(user, biz, f"Invoice {sale['invoice_no']}", body))
@@ -5471,12 +5686,27 @@ class Handler(BaseHTTPRequestHandler):
     def view_purchases(self, user, biz, cur, parts, method):
         b = user["business_id"]
         if len(parts) == 1 and method == "GET":
+            qs = parse_qs(urlparse(self.path).query)
+            qterm = qs.get("q", [""])[0].strip().lower()
             rows = q("""SELECT p.*, s.name AS sname FROM purchases p LEFT JOIN suppliers s ON s.id=p.supplier_id
                         WHERE p.business_id=? ORDER BY p.id DESC""", (b,))
-            rh = "".join(f"<tr><td><a href='/purchases/{r['id']}'>{r['id']}</a></td><td>{esc(r['sname'] or '-')}</td><td>{esc(r['purchase_date'])}</td>"
-                         f"<td>{money(r['total'], cur)}</td><td>{money(r['due'], cur)}</td></tr>" for r in rows)
-            return self.crud_list(user, biz, cur, "Purchases", ["#", "Supplier", "Date", "Total", "Due"],
-                                  rh, "/purchases/new", "+ New Purchase")
+            total_pur = sum(r["total"] for r in rows)
+            if qterm:
+                rows = [r for r in rows if qterm in (r["sname"] or "").lower() or qterm in f"pur-{r['id']:04d}" or qterm == str(r["id"])]
+            def _pstatus(r):
+                if r["due"] <= 0:
+                    return '<span class="pill paid">Paid</span>'
+                if r["paid"] > 0:
+                    return '<span class="pill partial">Partial</span>'
+                return '<span class="pill due">Due</span>'
+            rh = "".join(f"<tr><td><a href='/purchases/{r['id']}'>PUR-{r['id']:04d}</a></td><td>{esc(r['sname'] or '-')}</td><td>{esc(r['purchase_date'])}</td>"
+                         f"<td class='pr'>{money(r['total'], cur)}</td><td>{money(r['due'], cur)}</td><td>{_pstatus(r)}</td></tr>" for r in rows)
+            search = (f'<form method="get" action="/purchases"><div class="bd-search">{icon("search", 18)}<input type="text" name="q" placeholder="Search purchase…" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>')
+            body = (f'<div class="card"><h3>Total Purchase</h3><p style="font-size:20px;font-weight:900;color:#16a34a">{money(total_pur, cur)}</p>{search}'
+                    + table(["Purchase", "Supplier", "Date", "Total", "Due", "Status"], rh) + '</div>')
+            if user["role"] in ("owner", "admin"):
+                body += '<div class="card noprint"><a class="btn btn-block" href="/purchases/new">+ New Purchase</a></div>'
+            return self.send_html(200, page(user, biz, "Purchases", body))
         if len(parts) == 2 and parts[1].isdigit():
             pur = scoped_row("purchases", int(parts[1]), b)
             if method == "POST":
@@ -5572,7 +5802,7 @@ class Handler(BaseHTTPRequestHandler):
                 items, err = self._lines_form(form, user)
                 if err:
                     return self.send_html(200, page(user, biz, "New Purchase", f'<div class="card err">{esc(err)}</div>'))
-                total = sum(qty * price for _, qty, price in items)
+                total = sum(qty * price for _, qty, price, _ in items)
                 paid = max(0.0, min(float(self.fv(form, "paid") or 0), total))
                 sup = self.fv(form, "supplier_id")
                 sup_id = int(sup) if sup else None
@@ -5581,7 +5811,7 @@ class Handler(BaseHTTPRequestHandler):
                 pur_id = exec_db("""INSERT INTO purchases(business_id,supplier_id,total,paid,due,
                                     purchase_date,created_at) VALUES(?,?,?,?,?,?,?)""",
                                  (b, sup_id, total, paid, total - paid, today(), now_iso()))
-                for prod, qty, price in items:
+                for prod, qty, price, _ in items:
                     exec_db("INSERT INTO purchase_items(purchase_id,product_id,product_name,qty,price,amount) VALUES(?,?,?,?,?,?)",
                             (pur_id, prod["id"], prod["name"], qty, price, qty * price))
                     exec_db("UPDATE products SET stock=stock+? WHERE id=?", (qty, prod["id"]))
@@ -5661,11 +5891,24 @@ class Handler(BaseHTTPRequestHandler):
                      float(self.fv(form, "amount") or 0), self.fv(form, "method").strip(), today(),
                      self.fv(form, "note").strip(), now_iso()))
             return self.redirect("/expenses")
+        qs = parse_qs(urlparse(self.path).query)
+        qterm = qs.get("q", [""])[0].strip().lower()
+        cat_f = qs.get("cat", ["all"])[0]
         rows = q("SELECT * FROM expenses WHERE business_id=? ORDER BY id DESC", (b,))
-        rh = "".join(f"<tr><td>{esc(r['expense_date'])}</td><td>{esc(r['title'])}</td><td>{esc(r['category'])}</td><td>{money(r['amount'], cur)}</td><td>{esc(r['method'])}</td></tr>" for r in rows)
-        body = '<div class="card">' + table(["Date", "Title", "Category", "Amount", "Method"], rh) + '</div>'
+        cats = sorted({r["category"] for r in rows if r["category"]})
+        if qterm:
+            rows = [r for r in rows if qterm in r["title"].lower() or qterm in (r["category"] or "").lower()]
+        if cat_f != "all":
+            rows = [r for r in rows if (r["category"] or "") == cat_f]
+        rh = "".join(f"<tr><td><span style='display:inline-flex;gap:8px;align-items:center'><span class='tile-ic amber'>{icon('wallet', 18)}</span>{esc(r['title'])}</span></td><td>{esc(r['category'])}</td><td>{esc(r['expense_date'])}</td><td class='pr'>{money(r['amount'], cur)}</td></tr>" for r in rows)
+        pills = "".join(f'<a class="{"on" if cat_f == v else ""}" href="/expenses?cat={esc(v)}{("&amp;q=" + esc(qterm)) if qterm else ""}">{esc(l)}</a>'
+                        for v, l in [("all", "All")] + [(c, c) for c in cats])
+        search = (f'<form method="get" action="/expenses"><input type="hidden" name="cat" value="{esc(cat_f)}"><div class="bd-search">{icon("search", 18)}<input type="text" name="q" placeholder="Search expenses…" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>'
+                  f'<div class="bd-pills">{pills}</div>')
+        body = f'<div class="card">{search}' + table(["Expense", "Category", "Date", "Amount"], rh) + '</div>'
         if user["role"] in ("owner", "admin"):
-            body += ('<div class="card"><h3>New expense</h3>' + form_start("/expenses", user["_csrf"])
+            body += '<div class="card noprint"><a class="btn btn-block" href="#new-expense">+ Add Expense</a></div>'
+            body += ('<div class="card" id="new-expense"><h3>New expense</h3>' + form_start("/expenses", user["_csrf"])
                      + field("Title", "title", "", "text", True) + field("Category (Rent/Salary/Transport/Utility/Others)", "category")
                      + field("Amount", "amount", "", "number", True) + field("Method", "method") + field("Note", "note")
                      + '<button type="submit">Save expense</button></form></div>')
@@ -5700,9 +5943,22 @@ class Handler(BaseHTTPRequestHandler):
             self.check_csrf(user, form)
             exec_db("UPDATE users SET name=? WHERE id=?", (self.fv(form, "name").strip(), user["id"]), touch=False)
             return self.redirect("/profile")
-        body = ('<div class="card"><h3>My Profile</h3>'
+        initials = user.get("_initials", "?")
+        disp = user["name"] or user["email"]
+        pmenu = [("Edit Profile", "user", "#edit-profile"), ("Change Password", "lock", "/forgot"),
+                 ("Security", "shield", "/security"), ("Notification Settings", "bell", "/settings#notif"),
+                 ("App Settings", "settings", "/settings#app"), ("Language", "sparkles", "/settings#language")]
+        pmenu_html = "".join(
+            f'<a href="{href}"><span class="tile-ic">{icon(ic, 18)}</span><span class="lbl">{esc(n)}</span><span class="chev">&#8250;</span></a>'
+            for n, ic, href in pmenu)
+        body = (f'<div class="card"><div class="bd-hub"><div class="bd-avatar">{esc(initials)}</div>'
+                f'<div><div style="font-size:18px;font-weight:900">{esc(disp)}</div>'
+                f'<div style="color:#64748b;font-size:13px">{esc(user["role"])} · {esc(biz["name"])} ({esc(cur)})</div>'
+                f'<div style="color:#64748b;font-size:13px">{esc(user["email"])}</div></div></div></div>'
+                f'<div class="card"><div class="bd-menu">{pmenu_html}</div></div>'
+                '<div class="card"><h3>My Profile</h3>'
                 f'<p>Email: {esc(user["email"])}<br>Role: {esc(user["role"])}<br>Business: {esc(biz["name"])} ({esc(cur)})</p></div>'
-                '<div class="card"><h3>Edit display name</h3>' + form_start("/profile", user["_csrf"])
+                '<div class="card" id="edit-profile"><h3>Edit display name</h3>' + form_start("/profile", user["_csrf"])
                 + field("Display name", "name", user["name"] or "")
                 + '<button type="submit">Save</button></form></div>'
                 '<div class="card"><p><a class="btn" href="/security">Security settings</a> '
@@ -6319,7 +6575,17 @@ class Handler(BaseHTTPRequestHandler):
         links = "".join(f'<h4 style="margin:14px 0 6px">{g}</h4><p>' +
                         "".join(f'<a class="btn" href="/reports/{s}">{n}</a> ' for s, n in items) + '</p>'
                         for g, items in groups)
-        body = (f'<div class="card"><h3>All reports</h3>{links}</div>'
+        menu = [("Sales", "receipt", "sales"), ("Purchase", "truck", "/purchases"),
+                ("Inventory", "package", "inventory"), ("Customer", "users", "customer-dues"),
+                ("Supplier", "truck", "supplier-dues"), ("Expense", "wallet", "expense-cost"),
+                ("Income", "chart", "balance-sheet"), ("Profit & Loss", "chart", "profit-loss"),
+                ("Cash Flow", "money", "cash-flow"), ("Real Profit", "money", "real-profit"),
+                ("Gross Profit", "chart", "gross-profit")]
+        menu_html = "".join(
+            f'<a href="{s if s.startswith("/") else "/reports/" + s}"><span class="tile-ic">{icon(ic, 18)}</span><span class="lbl">{esc(n)}</span><span class="chev">&#8250;</span></a>'
+            for n, ic, s in menu)
+        body = (f'<div class="card"><h3>Reports</h3><div class="bd-menu">{menu_html}</div></div>'
+                f'<div class="card"><h3>All reports</h3>{links}</div>'
                 f'<div class="card"><form method="get" action="/reports">From <input type="date" name="from" value="{esc(frm) if frm != "2000-01-01" else ""}"> '
                 f'To <input type="date" name="to" value="{esc(to) if to != "2999-12-31" else ""}"> <button type="submit">Filter</button></form></div>'
                 '<div class="card"><h3>Sales summary</h3>'
@@ -6359,10 +6625,36 @@ class Handler(BaseHTTPRequestHandler):
         frm, to = self._range()
         filt = self._filter_form(frm, to, slug)
         if slug == "sales":
+            qs = parse_qs(urlparse(self.path).query)
             rows = q("SELECT * FROM sales WHERE business_id=? AND sale_date BETWEEN ? AND ? ORDER BY id DESC", (b, frm, to))
+            if qs.get("export") == ["csv"]:
+                out = io.StringIO()
+                w = csv.writer(out)
+                w.writerow(["invoice", "date", "total", "paid", "due"])
+                for r in rows:
+                    w.writerow([r["invoice_no"], r["sale_date"], r["total"], r["paid"], r["due"]])
+                return self.send_file(out.getvalue().encode(), "sales-report.csv", "text/csv")
             tot = q("SELECT COUNT(*), COALESCE(SUM(total),0), COALESCE(SUM(paid),0), COALESCE(SUM(due),0) FROM sales WHERE business_id=? AND sale_date BETWEEN ? AND ?", (b, frm, to), one=True)
+            profit = tot[1] - self._cogs(b, frm, to)
+            avg = tot[1] / tot[0] if tot[0] else 0
+            date_pill = "All time" if (frm == "2000-01-01" and to == "2999-12-31") else f"{fmt_dt(frm)} - {fmt_dt(to)}"
+            stats = (f'<div class="v23-stats">'
+                     f'<div class="v23-stat"><div class="chip" style="background:#ECFDF5">{icon("chart", 20)}</div><div class="lbl">Total Sales</div><div class="val">{money(tot[1], cur)}</div></div>'
+                     f'<div class="v23-stat"><div class="chip" style="background:#EFF6FF">{icon("money", 20)}</div><div class="lbl">Total Profit</div><div class="val">{money(profit, cur)}</div></div>'
+                     f'<div class="v23-stat"><div class="chip" style="background:#F5F3FF">{icon("receipt", 20)}</div><div class="lbl">Total Invoice</div><div class="val">{tot[0]}</div></div>'
+                     f'<div class="v23-stat"><div class="chip" style="background:#FFFBEB">{icon("wallet", 20)}</div><div class="lbl">Avg Order</div><div class="val">{money(avg, cur)}</div></div></div>')
+            daily = {}
+            for r in rows:
+                daily[r["sale_date"]] = daily.get(r["sale_date"], 0) + r["total"]
+            days = sorted(daily.items())[-14:]
+            mx = max([v for _, v in days], default=1) or 1
+            bars = "".join(f'<div class="bar"><i style="height:{max(2, int(v / mx * 100))}%"></i><span>{d[8:10]}/{d[5:7]}</span></div>' for d, v in days)
+            chart = f'<div class="card"><h3>Sales by day</h3><div class="bd-bars">{bars}</div></div>' if days else ""
             rh = "".join(f"<tr><td>{esc(r['invoice_no'])}</td><td>{esc(r['sale_date'])}</td><td>{money(r['total'], cur)}</td><td>{money(r['paid'], cur)}</td><td>{money(r['due'], cur)}</td></tr>" for r in rows)
-            body = filt + f'<div class="card"><p>Sales: {tot[0]} | Total: {money(tot[1], cur)} | Paid: {money(tot[2], cur)} | Due: {money(tot[3], cur)}</p>' + table(["Invoice", "Date", "Total", "Paid", "Due"], rh) + '</div>'
+            exports = (f'<p><button type="button" class="btn" onclick="window.print()">Print</button> '
+                       f'<a class="btn secondary" href="/reports/sales?from={esc(frm)}&amp;to={esc(to)}&amp;export=csv">Export CSV</a></p>')
+            body = (filt + f'<div class="card"><p><span class="pill paid">{esc(date_pill)}</span></p>{stats}{exports}'
+                    + table(["Invoice", "Date", "Total", "Paid", "Due"], rh) + '</div>' + chart)
             return self.send_html(200, page(user, biz, "Sales report", body))
         if slug == "inventory":
             rows = q("SELECT * FROM products WHERE business_id=? ORDER BY name", (b,))

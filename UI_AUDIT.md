@@ -42,6 +42,43 @@ and left green bar, sans-serif type, bold black headings.
 - Overlapping reports (dues vs receivables/payables, inventory vs
   stock valuation): same data grouped differently, not bugs.
 
+## Board pass (2026-10-26, user: "ai ui design same design Apply koro")
+
+The design target changed from the labhsbm.ai.studio desktop-web
+layouts to the user's mobile UI board (14 screens). Applied in the
+demo copy only:
+- Mobile top bar: back arrow on inner pages, hamburger on
+  Dashboard, page title, search icon, bell; main h1 hidden on
+  mobile. Desktop sidebar + h1 unchanged. Bottom nav already
+  matched (dark green + raised Scan) — unchanged.
+- Dashboard: greeting + date + Today pill banner (quote removed);
+  exactly 4 stat cards (Sales/Profit/Due/Orders — Cost dropped);
+  trend chart + Recent Transactions with type pills.
+- Lists (Products, Inventory, Sales, Purchases, Customers,
+  Suppliers, Expenses): search pill, filter pills, icon tiles,
+  status pills, green prices, full-width green action button at
+  the bottom. Products: SKU-Barcode + Category columns. Inventory:
+  Opening/In/Out/Current/Value + Stock Summary card (Opening =
+  Current − In + Out, footnoted on the page).
+- New Sale checkout: customer card, product search, cart steppers,
+  per-row discount, live summary (Items/Subtotal/Discount/Total/
+  Paid/Due), Payment Method, Note, big Complete Sale button.
+  Discount stored in the existing sale_items.discount column; note
+  in a new sales.note column (init_db migration — applies to any
+  existing demo.db on restart). Purchases POST updated for the
+  shared line parser (discount ignored there, totals unchanged).
+- Reports menu: flat icon list with chevrons on top; the grouped
+  chip index kept below for the other 15 reports. "Purchase" links
+  to /purchases (no dedicated purchase report exists — payables
+  would have been the wrong page); "Income" links to
+  /reports/balance-sheet (the app's own income page points there).
+- Sales report detail: date pill, 4 stat cards, 14-day CSS bar
+  chart, real Print + CSV export buttons (nothing labelled
+  Excel/PDF).
+- Profile hub + Settings menu hub (anchored sections, single Save).
+- NOT built: Subscription screen (no paywall in the app; no fake
+  plan state). POS structure untouched.
+
 ## Phase 2 (screen structure — NOT done, needs user direction)
 
 These are bigger than styling; each adds/changes screen structure:
