@@ -345,6 +345,19 @@ def init_db():
         _add_col("google_login_codes", "is_new_user", "is_new_user TEXT NOT NULL DEFAULT ''")
         conn.execute("""CREATE TABLE IF NOT EXISTS income_categories(id INTEGER PRIMARY KEY AUTOINCREMENT,
           business_id INTEGER NOT NULL, name TEXT NOT NULL, note TEXT, created_at TEXT)""")
+        # --- Phase 1 (master spec): purchase line discount, sale status,
+        # sales returns, notification targets, expense audit fields.
+        _add_col("purchase_items", "discount", "discount REAL NOT NULL DEFAULT 0")
+        _add_col("sales", "status", "status TEXT NOT NULL DEFAULT 'active'")
+        conn.execute("""CREATE TABLE IF NOT EXISTS sales_returns(id INTEGER PRIMARY KEY AUTOINCREMENT,
+          business_id INTEGER NOT NULL, sale_id INTEGER NOT NULL, total REAL NOT NULL DEFAULT 0,
+          refund REAL NOT NULL DEFAULT 0, note TEXT, return_date TEXT NOT NULL, created_at TEXT)""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS sales_return_items(id INTEGER PRIMARY KEY AUTOINCREMENT,
+          business_id INTEGER NOT NULL, return_id INTEGER NOT NULL, sale_item_id INTEGER NOT NULL,
+          product_id INTEGER, qty REAL NOT NULL DEFAULT 0, reason TEXT, refund REAL NOT NULL DEFAULT 0)""")
+        _add_col("notifications", "target", "target TEXT NOT NULL DEFAULT ''")
+        _add_col("expenses", "created_by", "created_by TEXT NOT NULL DEFAULT ''")
+        _add_col("expenses", "reference", "reference TEXT NOT NULL DEFAULT ''")
         conn.commit()
     finally:
         conn.close()
@@ -1389,6 +1402,8 @@ body.accent-orange{--primary:#ea580c;--primary-hover:#c2410c;--primary-light:#ff
 .v23-bars span{width:10px;border-radius:3px 3px 0 0;background:rgba(255,255,255,.85)}
 @media(max-width:767px){.v23-banner{flex-wrap:wrap}.v23-quote{flex-basis:100%;text-align:left}.v23-quote b{font-size:14px}.v23-bars{justify-content:flex-start}}
 .v23-stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding-bottom:4px;margin:12px 0}
+.v23-stats a.v23-stat-link{text-decoration:none;color:inherit;display:block}
+.v23-stats a.v23-stat-link .v23-stat{height:100%;box-sizing:border-box}
 .v23-stat{background:#fff;border:1px solid rgba(226,232,240,.8);border-radius:16px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
 .v23-stat .chip{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
 .v23-stat .lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8}
@@ -1489,11 +1504,11 @@ def seed_notifications(b, cur):
         for r in low:
             title = f"Low stock: {r['name']}"
             if not q("SELECT id FROM notifications WHERE business_id=? AND title=? AND substr(created_at,1,10)=?", (b, title, t), one=True):
-                exec_db("INSERT INTO notifications(business_id,title,body,created_at) VALUES(?,?,?,?)", (b, title, f"{r['stock']} left (threshold {r['low_stock']})", now_iso()), touch=False)
+                exec_db("INSERT INTO notifications(business_id,title,body,created_at,target) VALUES(?,?,?,?,?)", (b, title, f"{r['stock']} left (threshold {r['low_stock']})", now_iso(), "/products"), touch=False)
         for r in overdue:
             title = f"Overdue due: {r['invoice_no']}"
             if not q("SELECT id FROM notifications WHERE business_id=? AND title=? AND substr(created_at,1,10)=?", (b, title, t), one=True):
-                exec_db("INSERT INTO notifications(business_id,title,body,created_at) VALUES(?,?,?,?)", (b, title, f"{r['cname'] or 'Walk-in'} owes {money(r['due'], cur)} since {r['sale_date']}", now_iso()), touch=False)
+                exec_db("INSERT INTO notifications(business_id,title,body,created_at,target) VALUES(?,?,?,?,?)", (b, title, f"{r['cname'] or 'Walk-in'} owes {money(r['due'], cur)} since {r['sale_date']}", now_iso(), "/customers/dues"), touch=False)
     except Exception:
         pass
 
@@ -4643,7 +4658,7 @@ class Handler(BaseHTTPRequestHandler):
                 _bars += f'<span style="height:{_h}%;background:{color}"></span>'
             return f'<div class="v23-spark">{_bars}</div>'
 
-        def _stat(lbl, val, cur_v, prev_v, ic, chip_bg, spark_vals, spark_color):
+        def _stat(lbl, val, cur_v, prev_v, ic, chip_bg, spark_vals, spark_color, href):
             _txt, _cls = _vs23(cur_v, prev_v)
             if _txt == "new":
                 _disp, _cls = "↗ 100%", "up"
@@ -4653,15 +4668,15 @@ class Handler(BaseHTTPRequestHandler):
                 _disp = "↘ " + _txt.lstrip("-")
             else:
                 _disp = _txt
-            return (f'<div class="v23-stat"><div class="chip" style="background:{chip_bg}">{icon(ic, 20)}</div>'
+            return (f'<a class="v23-stat-link" href="{href}"><div class="v23-stat"><div class="chip" style="background:{chip_bg}">{icon(ic, 20)}</div>'
                     f'<div class="lbl">{lbl}</div><div class="val">{val}</div>'
-                    f'<div class="vs {_cls}">{_disp}</div>{_spark(spark_vals, spark_color)}</div>')
+                    f'<div class="vs {_cls}">{_disp}</div>{_spark(spark_vals, spark_color)}</div></a>')
 
         stats_html = ('<div class="kpi-row v23-stats">'
-                      + _stat("Total Sales", money(tdy["sales"], cur), tdy["sales"], ydy["sales"], "chart", "#ECFDF5", _sp_sales, "#16a34a")
-                      + _stat("Total Profit", money(tdy["profit"], cur), tdy["profit"], ydy["profit"], "money", "#EFF6FF", _sp_profit, "#2563eb")
-                      + _stat("Total Due", money(tdy["due"], cur), tdy["due"], ydy["due"], "file", "#FFFBEB", _sp_due, "#dc2626")
-                      + _stat("Total Orders", str(tdy["orders"]), tdy["orders"], ydy["orders"], "receipt", "#F5F3FF", _sp_orders, "#9333ea")
+                      + _stat("Total Sales", money(tdy["sales"], cur), tdy["sales"], ydy["sales"], "chart", "#ECFDF5", _sp_sales, "#16a34a", "/sales")
+                      + _stat("Total Profit", money(tdy["profit"], cur), tdy["profit"], ydy["profit"], "money", "#EFF6FF", _sp_profit, "#2563eb", "/reports/profit-loss")
+                      + _stat("Total Due", money(tdy["due"], cur), tdy["due"], ydy["due"], "file", "#FFFBEB", _sp_due, "#dc2626", "/customers/dues")
+                      + _stat("Total Orders", str(tdy["orders"]), tdy["orders"], ydy["orders"], "receipt", "#F5F3FF", _sp_orders, "#9333ea", "/sales")
                       + '</div>')
         banner = (f'<div class="m-banner v23-banner"><div><div class="greet">{greet2}{greet_name}! \U0001f44b</div>'
                   f'<span class="v23-datepill">{td.strftime("%a, %d %b %Y")}</span> '
@@ -5574,6 +5589,8 @@ class Handler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             qterm = qs.get("q", [""])[0].strip().lower()
             status = qs.get("status", ["all"])[0]
+            frm = qs.get("from", [""])[0]
+            to = qs.get("to", [""])[0]
             if qs.get("export") == ["csv"]:
                 rows = q("""SELECT s.*, c.name AS cname FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
                             WHERE s.business_id=? ORDER BY s.id DESC""", (b,))
@@ -5582,7 +5599,7 @@ class Handler(BaseHTTPRequestHandler):
                 w.writerow(["invoice", "customer", "date", "total", "paid", "due"])
                 for r in rows:
                     w.writerow([r["invoice_no"], r["cname"] or "Walk-in", r["sale_date"], r["total"], r["paid"], r["due"]])
-                return self.send_file(out.getvalue().encode(), "sales.csv", "text/csv")
+                return self.send_file(out.getvalue().encode("utf-8-sig"), "sales.csv", "text/csv")
             rows = q("""SELECT s.*, c.name AS cname FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
                         WHERE s.business_id=? ORDER BY s.id DESC""", (b,))
             if qterm:
@@ -5591,6 +5608,10 @@ class Handler(BaseHTTPRequestHandler):
                 rows = [r for r in rows if r["due"] <= 0]
             elif status == "due":
                 rows = [r for r in rows if r["due"] > 0]
+            if frm:
+                rows = [r for r in rows if r["sale_date"] >= frm]
+            if to:
+                rows = [r for r in rows if r["sale_date"] <= to]
             def _status(r):
                 if r["due"] <= 0:
                     return '<span class="pill paid">Paid</span>'
@@ -5599,9 +5620,11 @@ class Handler(BaseHTTPRequestHandler):
                 return '<span class="pill due">Due</span>'
             rh = "".join(f"<tr><td><a href='/sales/{r['id']}'>{esc(r['invoice_no'])}</a></td><td>{esc(r['cname'] or 'Walk-in')}</td>"
                          f"<td>{esc(r['sale_date'])}</td><td class='pr'>{money(r['total'], cur)}</td><td>{money(r['due'], cur)}</td><td>{_status(r)}</td></tr>" for r in rows)
-            pills = "".join(f'<a class="{"on" if status == v else ""}" href="/sales?status={v}{("&amp;q=" + esc(qterm)) if qterm else ""}">{l}</a>'
+            _extra = ("&amp;q=" + esc(qterm) if qterm else "") + ("&amp;from=" + esc(frm) if frm else "") + ("&amp;to=" + esc(to) if to else "")
+            pills = "".join(f'<a class="{"on" if status == v else ""}" href="/sales?status={v}{_extra}">{l}</a>'
                             for v, l in [("all", "All"), ("paid", "Paid"), ("due", "Due")])
-            filt = (f'<div class="card"><form method="get" action="/sales"><input type="hidden" name="status" value="{esc(status)}"><div class="bd-search">{icon("search", 18)}<input type="search" name="q" placeholder="Search invoice/customer" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>'
+            filt = (f'<div class="card"><form method="get" action="/sales"><input type="hidden" name="status" value="{esc(status)}"><div class="bd-search">{icon("search", 18)}<input type="search" name="q" placeholder="Search invoice/customer" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div>'
+                    f'<p>From <input type="date" name="from" value="{esc(frm)}"> To <input type="date" name="to" value="{esc(to)}"> <button type="submit" class="btn secondary">Filter</button></p></form>'
                     f'<div class="bd-pills">{pills}</div><p><a class="btn secondary" href="/sales?export=csv">Export CSV</a></p></div>')
             body = filt + '<div class="card">' + table(["Invoice", "Customer", "Date", "Total", "Due", "Status"], rh) + '</div>'
             if user["role"] in ("owner", "admin"):
@@ -5662,7 +5685,74 @@ class Handler(BaseHTTPRequestHandler):
                     + '<button type="submit" class="btn-block">✓ Complete Sale</button></form></div>')
             return self.send_html(200, page(user, biz, "New Sale", body, extra=js))
         if len(parts) == 2 and parts[1].isdigit():
-            return self.invoice_view(user, biz, cur, int(parts[1]))
+            sale_id = int(parts[1])
+            if method == "POST":
+                # Phase 1: sales returns + cancel/void. Original sale_items
+                # rows are never edited or deleted; returns live in
+                # sales_returns/sales_return_items, stock is restored, and
+                # the sale's total/due move (never below paid; any excess
+                # paid becomes the return's refund amount, never a
+                # negative payment).
+                self.require_role(user, "owner", "admin")
+                form = self.form()
+                self.check_csrf(user, form)
+                sale = scoped_row("sales", sale_id, b)
+                _st = sale["status"] if "status" in sale.keys() else "active"
+                if _st == "cancelled":
+                    return self.send_html(200, page(user, biz, "Sale", '<div class="card err">This sale is cancelled.</div>'))
+                action = self.fv(form, "action")
+                _items = q("SELECT * FROM sale_items WHERE sale_id=?", (sale_id,))
+                def _already(item_id):
+                    return q("SELECT COALESCE(SUM(qty),0) AS v FROM sales_return_items WHERE sale_item_id=?", (item_id,), one=True)[0]
+                def _restore(item, qty, note):
+                    if item["product_id"]:
+                        exec_db("UPDATE products SET stock=stock+? WHERE id=?", (qty, item["product_id"]))
+                        exec_db("INSERT INTO stock_movements(business_id,product_id,kind,qty,note,move_date,created_at) VALUES(?,?,?,?,?,?,?)",
+                                (b, item["product_id"], "sale-return", qty, note, today(), now_iso()))
+                if action == "return-item":
+                    item = next((i for i in _items if str(i["id"]) == self.fv(form, "item_id")), None)
+                    if not item:
+                        return self.send_html(200, page(user, biz, "Sale", '<div class="card err">Item not found.</div>'))
+                    already = _already(item["id"])
+                    rqty = float(self.fv(form, "qty") or 0)
+                    if rqty <= 0 or rqty > item["qty"] - already:
+                        return self.send_html(200, page(user, biz, "Sale", f'<div class="card err">Return quantity must be between 1 and {item["qty"] - already} (already returned {already}).</div>'))
+                    unit = (item["amount"] / item["qty"]) if item["qty"] else item["price"]
+                    reduction = rqty * unit
+                    new_total = sale["total"] - reduction
+                    new_due = max(0.0, new_total - sale["paid"])
+                    refund = max(0.0, sale["paid"] - new_total)
+                    ret_id = exec_db("INSERT INTO sales_returns(business_id,sale_id,total,refund,note,return_date,created_at) VALUES(?,?,?,?,?,?,?)",
+                                     (b, sale_id, reduction, refund, self.fv(form, "reason").strip(), today(), now_iso()))
+                    exec_db("INSERT INTO sales_return_items(business_id,return_id,sale_item_id,product_id,qty,reason,refund) VALUES(?,?,?,?,?,?,?)",
+                            (b, ret_id, item["id"], item["product_id"], rqty, self.fv(form, "reason").strip(), reduction))
+                    _restore(item, rqty, f"Sale #{sale_id} return")
+                    exec_db("UPDATE sales SET total=?, due=? WHERE id=?", (new_total, new_due, sale_id))
+                    return self.redirect(f"/sales/{sale_id}")
+                if action == "cancel":
+                    reduction = 0.0
+                    ret_id = None
+                    for item in _items:
+                        rem = item["qty"] - _already(item["id"])
+                        if rem <= 0:
+                            continue
+                        unit = (item["amount"] / item["qty"]) if item["qty"] else item["price"]
+                        reduction += rem * unit
+                        if ret_id is None:
+                            ret_id = exec_db("INSERT INTO sales_returns(business_id,sale_id,total,refund,note,return_date,created_at) VALUES(?,?,?,?,?,?,?)",
+                                             (b, sale_id, 0, 0, self.fv(form, "reason").strip(), today(), now_iso()))
+                        exec_db("INSERT INTO sales_return_items(business_id,return_id,sale_item_id,product_id,qty,reason,refund) VALUES(?,?,?,?,?,?,?)",
+                                (b, ret_id, item["id"], item["product_id"], rem, self.fv(form, "reason").strip(), rem * unit))
+                        _restore(item, rem, f"Sale #{sale_id} cancelled")
+                    new_total = sale["total"] - reduction
+                    new_due = max(0.0, new_total - sale["paid"])
+                    refund = max(0.0, sale["paid"] - new_total)
+                    if ret_id is not None:
+                        exec_db("UPDATE sales_returns SET total=?, refund=? WHERE id=?", (reduction, refund, ret_id))
+                    exec_db("UPDATE sales SET total=?, due=?, status='cancelled' WHERE id=?", (new_total, new_due, sale_id))
+                    return self.redirect(f"/sales/{sale_id}")
+                raise NotFound("Unknown sale action")
+            return self.invoice_view(user, biz, cur, sale_id)
         raise NotFound("Sale page not found")
 
     def invoice_view(self, user, biz, cur, sale_id, template=None, print_auto=False):
@@ -5689,13 +5779,30 @@ class Handler(BaseHTTPRequestHandler):
             head = f'<div style="border-bottom:1px solid #e2e8f0;padding-bottom:8px"><b>{esc(biz["name"])}</b></div>'
         else:
             head = f'<div><b>{esc(biz["name"])}</b> — Invoice</div>' 
+        _status = sale["status"] if "status" in sale.keys() else "active"
+        _rets = q("SELECT * FROM sales_returns WHERE business_id=? AND sale_id=? ORDER BY id DESC", (b, sale_id))
+        _reth = "".join(f"<tr><td>{esc(r['return_date'])}</td><td>{money(r['total'], cur)}</td><td>{money(r['refund'], cur)}</td><td>{esc(r['note'])}</td></tr>" for r in _rets)
+        _ret_card = ('<div class="card"><h3>Sales returns</h3>' + table(["Date", "Amount", "Refund", "Note"], _reth) + '</div>') if _rets else ""
+        _forms = ""
+        if user["role"] in ("owner", "admin") and _status != "cancelled":
+            _iopts = "".join(f'<option value="{i["id"]}">{esc(i["product_name"])} (qty {i["qty"]})</option>' for i in items)
+            _forms = ('<div class="card noprint"><h3>Return an item</h3>' + form_start(f"/sales/{sale_id}", user["_csrf"])
+                      + '<input type="hidden" name="action" value="return-item">'
+                      + f'<p><label>Item</label><br><select name="item_id" required>{_iopts}</select></p>'
+                      + field("Return quantity", "qty", "", "number", True) + field("Reason", "reason")
+                      + '<button type="submit">Record return</button></form></div>'
+                      '<div class="card noprint"><h3>Cancel / void sale</h3>' + form_start(f"/sales/{sale_id}", user["_csrf"])
+                      + '<input type="hidden" name="action" value="cancel">'
+                      + field("Reason", "reason", "", "text", True)
+                      + '<button type="submit" class="danger">Cancel sale (returns all remaining items)</button></form></div>')
         body = (f'<div class="card">{head}<h2>Invoice {esc(sale["invoice_no"])}</h2>'
-                f'<p>Business: {esc(biz["name"])}<br>Customer: {esc(cust["name"]) if cust else "Walk-in"}<br>Date: {esc(sale["sale_date"])}</p>'
+                f'<p>Business: {esc(biz["name"])}<br>Customer: {esc(cust["name"]) if cust else "Walk-in"}<br>Date: {esc(sale["sale_date"])}<br>Status: {esc(_status)}</p>'
                 + (f'<p>Note: {esc(_note)}</p>' if _note else "")
                 + table(_cols, rh)
                 + f'<p>Total: {money(sale["total"], cur)}<br>Paid: {money(sale["paid"], cur)}<br>Due: {money(sale["due"], cur)}</p>'
                 + f'<p class="noprint"><button type="button" class="btn" onclick="window.print()">Print invoice</button> <a class="btn secondary" href="/invoices">Back to Invoices</a></p>'
                 + f'<p class="noprint">Templates: <a class="btn secondary" href="/invoices/{sale["id"]}?template=modern">Modern</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=classic">Classic</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=minimal">Minimal</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=bold">Bold</a> <a class="btn secondary" href="/invoices/{sale["id"]}?template=receipt">Receipt</a> — set the default in Settings &gt; Invoice Templates.</p></div>'
+                + _ret_card + _forms
                 + ('<script>window.print()</script>' if print_auto else ""))
         return self.send_html(200, page(user, biz, f"Invoice {sale['invoice_no']}", body))
 
@@ -5717,7 +5824,7 @@ class Handler(BaseHTTPRequestHandler):
                 w.writerow(["invoice", "customer", "date", "total", "paid", "due"])
                 for r in rows:
                     w.writerow([r["invoice_no"], r["cname"] or "Walk-in", r["sale_date"], r["total"], r["paid"], r["due"]])
-                return self.send_file(out.getvalue().encode(), "invoices.csv", "text/csv")
+                return self.send_file(out.getvalue().encode("utf-8-sig"), "invoices.csv", "text/csv")
             rows = q("""SELECT s.*, c.name AS cname FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
                         WHERE s.business_id=? ORDER BY s.id DESC""", (b,))
             if qterm:
@@ -5802,7 +5909,10 @@ class Handler(BaseHTTPRequestHandler):
                     rqty = float(self.fv(form, "qty") or 0)
                     if rqty <= 0 or rqty > item["qty"]:
                         return self.send_html(200, page(user, biz, "Purchase", '<div class="card err">Return quantity must be between 1 and the purchased quantity.</div>'))
-                    refund = rqty * item["price"]
+                    # Effective unit = discounted line amount / qty (old rows:
+                    # amount = qty*price, so this equals price exactly).
+                    _unit = (item["amount"] / item["qty"]) if item["qty"] else item["price"]
+                    refund = rqty * _unit
                     ret_id = exec_db("INSERT INTO purchase_returns(business_id,purchase_id,total,note,return_date,created_at) VALUES(?,?,?,?,?,?)",
                                      (b, pur["id"], refund, self.fv(form, "reason").strip(), today(), now_iso()))
                     exec_db("INSERT INTO purchase_return_items(business_id,return_id,product_id,qty,reason,refund) VALUES(?,?,?,?,?,?)",
@@ -5831,31 +5941,36 @@ class Handler(BaseHTTPRequestHandler):
                 return self.redirect(f"/purchases/{pur['id']}")
             sup = q("SELECT name FROM suppliers WHERE id=?", (pur["supplier_id"],), one=True) if pur["supplier_id"] else None
             items = q("SELECT * FROM purchase_items WHERE purchase_id=?", (pur["id"],))
-            ih = "".join(f"<tr><td>{esc(i['product_name'])}</td><td>{i['qty']}</td><td>{money(i['price'], cur)}</td><td>{money(i['amount'], cur)}</td></tr>" for i in items)
+            if any(i["discount"] for i in items):
+                ih = "".join(f"<tr><td>{esc(i['product_name'])}</td><td>{i['qty']}</td><td>{money(i['price'], cur)}</td><td>{money(i['discount'], cur)}</td><td>{money(i['amount'], cur)}</td></tr>" for i in items)
+                _icols = ["Item", "Qty", "Price", "Discount", "Amount"]
+            else:
+                ih = "".join(f"<tr><td>{esc(i['product_name'])}</td><td>{i['qty']}</td><td>{money(i['price'], cur)}</td><td>{money(i['amount'], cur)}</td></tr>" for i in items)
+                _icols = ["Item", "Qty", "Price", "Amount"]
             rets = q("SELECT * FROM purchase_returns WHERE business_id=? AND purchase_id=? ORDER BY id DESC", (b, pur["id"]))
             rh2 = "".join(f"<tr><td>{esc(r['return_date'])}</td><td>{money(r['total'], cur)}</td><td>{esc(r['note'])}</td></tr>" for r in rets)
             pays = q("SELECT * FROM purchase_payments WHERE business_id=? AND purchase_id=? ORDER BY id DESC", (b, pur["id"]))
             ph2 = "".join(f"<tr><td>{esc(r['pay_date'])}</td><td>{money(r['amount'], cur)}</td><td>{esc(r['method'])}</td></tr>" for r in pays)
             body = (f'<div class="card"><h3>Purchase #{pur["id"]}</h3><p>Status: <b>{esc(pur["status"])}</b><br>Supplier: {esc(sup["name"]) if sup else "-"}<br>Date: {esc(pur["purchase_date"])}<br>Total: {money(pur["total"], cur)} | Paid: {money(pur["paid"], cur)} | Due: {money(pur["due"], cur)}</p>'
-                    + table(["Item", "Qty", "Price", "Amount"], ih) + '</div>'
+                    + table(_icols, ih) + '<p class="noprint"><button type="button" class="btn" onclick="window.print()">Print purchase</button></p></div>'
                     '<div class="card"><h3>Purchase returns</h3>' + (table(["Date", "Amount", "Note"], rh2) if rets else "<p>None yet.</p>") + '</div>'
                     '<div class="card"><h3>Purchase payments</h3>' + (table(["Date", "Amount", "Method"], ph2) if pays else "<p>None yet.</p>") + '</div>')
             if user["role"] in ("owner", "admin"):
                 iopts = "".join(f'<option value="{i["id"]}">{esc(i["product_name"])} (qty {i["qty"]})</option>' for i in items)
-                body += ('<div class="card"><h3>Receive / Cancel</h3>' + form_start(f"/purchases/{pur['id']}", user["_csrf"])
+                body += ('<div class="card noprint"><h3>Receive / Cancel</h3>' + form_start(f"/purchases/{pur['id']}", user["_csrf"])
                          + '<input type="hidden" name="action" value="receive"><button type="submit">Mark received (adds stock, draft only)</button></form>'
                          + form_start(f"/purchases/{pur['id']}", user["_csrf"])
                          + '<input type="hidden" name="action" value="cancel"><button type="submit" class="danger">Cancel purchase (reverses stock if received)</button></form></div>'
-                         '<div class="card"><h3>Return a purchased item</h3>' + form_start(f"/purchases/{pur['id']}", user["_csrf"])
+                         '<div class="card noprint"><h3>Return a purchased item</h3>' + form_start(f"/purchases/{pur['id']}", user["_csrf"])
                          + '<input type="hidden" name="action" value="return-item">'
                          + f'<p><label>Item</label><br><select name="item_id" required>{iopts}</select></p>'
                          + field("Return quantity", "qty", "", "number", True) + field("Reason", "reason")
                          + '<button type="submit">Record item return</button></form></div>')
-                body += ('<div class="card"><h3>Record purchase return (amount only)</h3>' + form_start(f"/purchases/{pur['id']}", user["_csrf"])
+                body += ('<div class="card noprint"><h3>Record purchase return (amount only)</h3>' + form_start(f"/purchases/{pur['id']}", user["_csrf"])
                          + '<input type="hidden" name="action" value="return">'
                          + field("Return amount", "amount", "", "number", True) + field("Note", "note")
                          + '<button type="submit">Record return</button></form></div>'
-                         '<div class="card"><h3>Record purchase payment</h3>' + form_start(f"/purchases/{pur['id']}", user["_csrf"])
+                         '<div class="card noprint"><h3>Record purchase payment</h3>' + form_start(f"/purchases/{pur['id']}", user["_csrf"])
                          + '<input type="hidden" name="action" value="pay">'
                          + field("Payment amount", "amount", "", "number", True) + field("Method", "method")
                          + '<button type="submit">Record payment</button></form></div>')
@@ -5868,7 +5983,7 @@ class Handler(BaseHTTPRequestHandler):
                 items, err = self._lines_form(form, user)
                 if err:
                     return self.send_html(200, page(user, biz, "New Purchase", f'<div class="card err">{esc(err)}</div>'))
-                total = sum(qty * price for _, qty, price, _ in items)
+                total = sum(qty * price - disc for _, qty, price, disc in items)
                 paid = max(0.0, min(float(self.fv(form, "paid") or 0), total))
                 sup = self.fv(form, "supplier_id")
                 sup_id = int(sup) if sup else None
@@ -5877,9 +5992,9 @@ class Handler(BaseHTTPRequestHandler):
                 pur_id = exec_db("""INSERT INTO purchases(business_id,supplier_id,total,paid,due,
                                     purchase_date,created_at) VALUES(?,?,?,?,?,?,?)""",
                                  (b, sup_id, total, paid, total - paid, today(), now_iso()))
-                for prod, qty, price, _ in items:
-                    exec_db("INSERT INTO purchase_items(purchase_id,product_id,product_name,qty,price,amount) VALUES(?,?,?,?,?,?)",
-                            (pur_id, prod["id"], prod["name"], qty, price, qty * price))
+                for prod, qty, price, disc in items:
+                    exec_db("INSERT INTO purchase_items(purchase_id,product_id,product_name,qty,price,amount,discount) VALUES(?,?,?,?,?,?,?)",
+                            (pur_id, prod["id"], prod["name"], qty, price, qty * price - disc, disc))
                     exec_db("UPDATE products SET stock=stock+? WHERE id=?", (qty, prod["id"]))
                     exec_db("INSERT INTO stock_movements(business_id,product_id,kind,qty,note,move_date,created_at) VALUES(?,?,?,?,?,?,?)",
                             (b, prod["id"], "purchase", qty, f"Purchase #{pur_id}", today(), now_iso()))
@@ -5888,7 +6003,7 @@ class Handler(BaseHTTPRequestHandler):
             products = q("SELECT * FROM products WHERE business_id=? ORDER BY name", (b,))
             sups = q("SELECT id, name FROM suppliers WHERE business_id=? ORDER BY name", (b,))
             sopts = '<option value="">-</option>' + "".join(f'<option value="{s["id"]}">{esc(s["name"])}</option>' for s in sups)
-            row, js = self._line_picker(products, cur)
+            row, js = self._line_picker(products, cur, with_discount=True)
             body = ('<div class="card">' + form_start("/purchases/new", user["_csrf"])
                     + f'<p><label>Supplier</label><br><select name="supplier_id">{sopts}</select></p>'
                     + '<div id="lines">' + row + '</div>'
@@ -5951,11 +6066,11 @@ class Handler(BaseHTTPRequestHandler):
             self.require_role(user, "owner", "admin")
             form = self.form()
             self.check_csrf(user, form)
-            exec_db("""INSERT INTO expenses(business_id,title,category,amount,method,expense_date,note,created_at)
-                       VALUES(?,?,?,?,?,?,?,?)""",
+            exec_db("""INSERT INTO expenses(business_id,title,category,amount,method,expense_date,note,created_at,created_by,reference)
+                       VALUES(?,?,?,?,?,?,?,?,?,?)""",
                     (b, self.fv(form, "title").strip(), self.fv(form, "category").strip(),
                      float(self.fv(form, "amount") or 0), self.fv(form, "method").strip(), today(),
-                     self.fv(form, "note").strip(), now_iso()))
+                     self.fv(form, "note").strip(), now_iso(), user["email"], self.fv(form, "reference").strip()))
             return self.redirect("/expenses")
         qs = parse_qs(urlparse(self.path).query)
         qterm = qs.get("q", [""])[0].strip().lower()
@@ -5966,7 +6081,19 @@ class Handler(BaseHTTPRequestHandler):
             rows = [r for r in rows if qterm in r["title"].lower() or qterm in (r["category"] or "").lower()]
         if cat_f != "all":
             rows = [r for r in rows if (r["category"] or "") == cat_f]
-        rh = "".join(f"<tr><td><span style='display:inline-flex;gap:8px;align-items:center'><span class='tile-ic amber'>{icon('wallet', 18)}</span>{esc(r['title'])}</span></td><td>{esc(r['category'])}</td><td>{esc(r['expense_date'])}</td><td class='pr'>{money(r['amount'], cur)}</td></tr>" for r in rows)
+        rh = ""
+        for r in rows:
+            _ref = r["reference"] if "reference" in r.keys() else ""
+            _by = r["created_by"] if "created_by" in r.keys() else ""
+            if _ref and _by:
+                _sub = f"<br><small>Ref: {esc(_ref)} · By: {esc(_by)}</small>"
+            elif _ref:
+                _sub = f"<br><small>Ref: {esc(_ref)}</small>"
+            elif _by:
+                _sub = f"<br><small>By: {esc(_by)}</small>"
+            else:
+                _sub = ""
+            rh += f"<tr><td><span style='display:inline-flex;gap:8px;align-items:center'><span class='tile-ic amber'>{icon('wallet', 18)}</span>{esc(r['title'])}</span>{_sub}</td><td>{esc(r['category'])}</td><td>{esc(r['expense_date'])}</td><td class='pr'>{money(r['amount'], cur)}</td></tr>"
         pills = "".join(f'<a class="{"on" if cat_f == v else ""}" href="/expenses?cat={esc(v)}{("&amp;q=" + esc(qterm)) if qterm else ""}">{esc(l)}</a>'
                         for v, l in [("all", "All")] + [(c, c) for c in cats])
         search = (f'<form method="get" action="/expenses"><input type="hidden" name="cat" value="{esc(cat_f)}"><div class="bd-search">{icon("search", 18)}<input type="text" name="q" placeholder="Search expenses…" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>'
@@ -5976,7 +6103,7 @@ class Handler(BaseHTTPRequestHandler):
             body += '<div class="card noprint"><a class="btn btn-block" href="#new-expense">+ Add Expense</a></div>'
             body += ('<div class="card" id="new-expense"><h3>New expense</h3>' + form_start("/expenses", user["_csrf"])
                      + field("Title", "title", "", "text", True) + field("Category (Rent/Salary/Transport/Utility/Others)", "category")
-                     + field("Amount", "amount", "", "number", True) + field("Method", "method") + field("Note", "note")
+                     + field("Amount", "amount", "", "number", True) + field("Method", "method") + field("Reference", "reference") + field("Note", "note")
                      + '<button type="submit">Save expense</button></form></div>')
         return self.send_html(200, page(user, biz, "Expenses", body))
 
@@ -6455,7 +6582,9 @@ class Handler(BaseHTTPRequestHandler):
                 f"<input type='hidden' name='csrf' value='{esc(user['_csrf'])}'>"
                 f"<input type='hidden' name='action' value='mark-read'>"
                 f"<input type='hidden' name='notif_id' value='{r['id']}'><button type='submit' class='secondary'>Mark read</button></form>")
-            items += f"<li class='{cls}'><b>{esc(r['title'])}</b> — {esc(r['body'])} <small>({esc(fmt_dt(r['created_at']))})</small> {mark}</li>"
+            _tgt = r["target"] if "target" in r.keys() else ""
+            _ttl = f"<a href='{_tgt}'>{esc(r['title'])}</a>" if _tgt else esc(r['title'])
+            items += f"<li class='{cls}'><b>{_ttl}</b> — {esc(r['body'])} <small>({esc(fmt_dt(r['created_at']))})</small> {mark}</li>"
         body = ('<div class="card"><h3>Notifications</h3>'
                 + (f"<ul>{items}</ul>" if rows else "<p>All clear — no alerts.</p>")
                 + f"<p>{form_start('/notifications', user['_csrf'])}<input type='hidden' name='action' value='mark-all-read'>"
@@ -6468,9 +6597,9 @@ class Handler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             if qs.get("type") == ["imei"]:
                 data = "imei,product name or id\n123456789012345,Phone X\n"
-                return self.send_file(data.encode(), "imei-template.csv", "text/csv")
+                return self.send_file(data.encode("utf-8-sig"), "imei-template.csv", "text/csv")
             data = "name,sku,barcode,purchase_price,selling_price,stock,brand\nPhone X,PX1,123456,100,150,10,BrandA\n"
-            return self.send_file(data.encode(), "products-template.csv", "text/csv")
+            return self.send_file(data.encode("utf-8-sig"), "products-template.csv", "text/csv")
         if method == "POST":
             ctype = self.headers.get("Content-Type") or ""
             if "multipart/form-data" in ctype:
@@ -6668,6 +6797,20 @@ class Handler(BaseHTTPRequestHandler):
                     LEFT JOIN products p ON p.id=si.product_id
                     WHERE s.business_id=? AND s.sale_date BETWEEN ? AND ?""", (b, frm, to), one=True)[0]
 
+    def _report_shell(self, biz, body):
+        """Shared report-detail shell (Phase 1, spec v2): the business's
+        own information header — never a LABH logo or LABH name — plus
+        the green 'Powered by LABH' footer. The businesses table carries
+        name + currency only, so those are the header fields."""
+        head = (f'<div class="card"><div style="font-size:16px;font-weight:900">{esc(biz["name"])}</div>'
+                f'<div style="color:#64748b;font-size:13px">{esc(biz["currency"])}</div></div>')
+        foot = '<p style="color:#16a34a;font-weight:700">Powered by LABH Smart Business Manager</p>'
+        return head + body + foot
+
+    def _report_send(self, user, biz, title, body):
+        """Single choke point for every /reports/<slug> page."""
+        return self.send_html(200, page(user, biz, title, self._report_shell(biz, body)))
+
     def _filter_form(self, frm, to, slug):
         return (f'<div class="card"><form method="get" action="/reports/{slug}">'
                 f'From <input type="date" name="from" value="{esc(frm) if frm != "2000-01-01" else ""}"> '
@@ -6688,7 +6831,7 @@ class Handler(BaseHTTPRequestHandler):
                 w.writerow(["invoice", "date", "total", "paid", "due"])
                 for r in rows:
                     w.writerow([r["invoice_no"], r["sale_date"], r["total"], r["paid"], r["due"]])
-                return self.send_file(out.getvalue().encode(), "sales-report.csv", "text/csv")
+                return self.send_file(out.getvalue().encode("utf-8-sig"), "sales-report.csv", "text/csv")
             tot = q("SELECT COUNT(*), COALESCE(SUM(total),0), COALESCE(SUM(paid),0), COALESCE(SUM(due),0) FROM sales WHERE business_id=? AND sale_date BETWEEN ? AND ?", (b, frm, to), one=True)
             profit = tot[1] - self._cogs(b, frm, to)
             avg = tot[1] / tot[0] if tot[0] else 0
@@ -6710,14 +6853,71 @@ class Handler(BaseHTTPRequestHandler):
                        f'<a class="btn secondary" href="/reports/sales?from={esc(frm)}&amp;to={esc(to)}&amp;export=csv">Export CSV</a></p>')
             body = (filt + f'<div class="card"><p><span class="pill paid">{esc(date_pill)}</span></p>{stats}{exports}'
                     + table(["Invoice", "Date", "Total", "Paid", "Due"], rh) + '</div>' + chart)
-            return self.send_html(200, page(user, biz, "Sales report", body))
+            return self._report_send(user, biz, "Sales report", body)
+        if slug == "purchases":
+            # Phase 1 (master spec report 2): per-line purchase report.
+            # "Invoice" is the PUR-XXXX display number (purchases carry no
+            # separate invoice_no). Discount comes from purchase_items
+            # (0 for rows created before the discount column existed).
+            qs = parse_qs(urlparse(self.path).query)
+            sup_f = qs.get("supplier", ["all"])[0]
+            st_f = qs.get("status", ["all"])[0]
+            rows = q("""SELECT p.id AS pid, p.supplier_id AS sid, p.purchase_date AS dt, p.total AS ptot, p.paid AS ppaid, p.due AS pdue,
+                               COALESCE(s.name,'-') AS sname, pi.product_name AS pname, pi.qty AS qty,
+                               pi.price AS cost, COALESCE(pi.discount,0) AS disc, pi.amount AS amt
+                        FROM purchase_items pi JOIN purchases p ON p.id=pi.purchase_id
+                        LEFT JOIN suppliers s ON s.id=p.supplier_id
+                        WHERE p.business_id=? AND p.purchase_date BETWEEN ? AND ?
+                        ORDER BY p.purchase_date DESC, p.id DESC""", (b, frm, to))
+            sups = q("SELECT id, name FROM suppliers WHERE business_id=? ORDER BY name", (b,))
+            if sup_f != "all":
+                rows = [r for r in rows if str(r["sid"]) == sup_f]
+            if st_f == "paid":
+                rows = [r for r in rows if r["pdue"] <= 0]
+            elif st_f == "partial":
+                rows = [r for r in rows if r["pdue"] > 0 and r["ppaid"] > 0]
+            elif st_f == "due":
+                rows = [r for r in rows if r["pdue"] > 0 and r["ppaid"] <= 0]
+            if qs.get("export") == ["csv"]:
+                out = io.StringIO()
+                w = csv.writer(out)
+                w.writerow(["date", "invoice", "supplier", "product", "qty", "cost", "discount", "total", "payment_status"])
+                for r in rows:
+                    _pst = "Paid" if r["pdue"] <= 0 else ("Partial" if r["ppaid"] > 0 else "Due")
+                    w.writerow([r["dt"], f"PUR-{r['pid']:04d}", r["sname"], r["pname"], r["qty"], r["cost"], r["disc"], r["amt"], _pst])
+                return self.send_file(out.getvalue().encode("utf-8-sig"), "purchase-report.csv", "text/csv")
+            tot_amt = sum(r["amt"] for r in rows)
+            tot_disc = sum(r["disc"] for r in rows)
+            # Paid is purchase-level: count each purchase once, not once per line.
+            tot_paid = sum({r["pid"]: r["ppaid"] for r in rows}.values())
+            rh = "".join(
+                f"<tr><td>{esc(r['dt'])}</td><td>PUR-{r['pid']:04d}</td><td>{esc(r['sname'])}</td>"
+                f"<td>{esc(r['pname'])}</td><td>{r['qty']}</td><td>{money(r['cost'], cur)}</td>"
+                f"<td>{money(r['disc'], cur)}</td><td>{money(r['amt'], cur)}</td>"
+                f"<td>{'Paid' if r['pdue'] <= 0 else ('Partial' if r['ppaid'] > 0 else 'Due')}</td></tr>" for r in rows)
+            sopts = '<option value="all">All suppliers</option>' + "".join(
+                f'<option value="{s["id"]}"{" selected" if sup_f == str(s["id"]) else ""}>{esc(s["name"])}</option>' for s in sups)
+            stopts = "".join(
+                f'<option value="{v}"{" selected" if st_f == v else ""}>{l}</option>'
+                for v, l in [("all", "All"), ("paid", "Paid"), ("partial", "Partial"), ("due", "Due")])
+            pfilt = (f'<div class="card"><form method="get" action="/reports/purchases">'
+                     f'From <input type="date" name="from" value="{esc(frm) if frm != "2000-01-01" else ""}"> '
+                     f'To <input type="date" name="to" value="{esc(to) if to != "2999-12-31" else ""}"> '
+                     f'<select name="supplier">{sopts}</select> <select name="status">{stopts}</select> '
+                     f'<button type="submit">Filter</button></form></div>')
+            exports = (f'<p><button type="button" class="btn" onclick="window.print()">Print</button> '
+                       f'<a class="btn secondary" href="/reports/purchases?from={esc(frm)}&amp;to={esc(to)}&amp;supplier={esc(sup_f)}&amp;status={esc(st_f)}&amp;export=csv">Export CSV</a></p>')
+            body = (pfilt + f'<div class="card"><p>Total lines: {len(rows)} | Total: {money(tot_amt, cur)} | '
+                    f'Discount: {money(tot_disc, cur)} | Paid (purchases): {money(tot_paid, cur)}</p>{exports}'
+                    + table(["Date", "Invoice", "Supplier", "Product", "Qty", "Cost", "Discount", "Total", "Payment Status"], rh) + '</div>')
+            return self._report_send(user, biz, "Purchase report", body)
         if slug == "inventory":
             rows = q("SELECT * FROM products WHERE business_id=? ORDER BY name", (b,))
             rh = "".join(f"<tr><td>{esc(r['name'])}</td><td>{r['stock']}</td><td>{money(r['purchase_price'], cur)}</td><td>{money(r['stock'] * r['purchase_price'], cur)}</td><td>{money(r['stock'] * r['selling_price'], cur)}</td></tr>" for r in rows)
             cv = sum(r["stock"] * r["purchase_price"] for r in rows)
             sv = sum(r["stock"] * r["selling_price"] for r in rows)
             body = f'<div class="card"><p>Total stock value at cost: {money(cv, cur)} | at selling price: {money(sv, cur)}</p>' + table(["Product", "Stock", "Cost price", "Value (cost)", "Value (selling)"], rh) + '</div>'
-            return self.send_html(200, page(user, biz, "Inventory report", body))
+            return self._report_send(user, biz, "Inventory report", body)
         if slug == "customer-dues":
             rows = q("SELECT * FROM customers WHERE business_id=? ORDER BY name", (b,))
             rh = "".join(f"<tr><td>{esc(r['name'])}</td><td>{money(r['opening_balance'], cur)}</td><td>{money(customer_due(b, r['id']), cur)}</td></tr>" for r in rows)
@@ -6726,7 +6926,7 @@ class Handler(BaseHTTPRequestHandler):
             ah = "".join(f"<tr><td>{esc(a['name'])}</td><td>{money(a['buckets']['0-30'], cur)}</td><td>{money(a['buckets']['31-60'], cur)}</td><td>{money(a['buckets']['61-90'], cur)}</td><td>{money(a['buckets']['90+'], cur)}</td><td>{money(sum(a['buckets'].values()), cur)}</td></tr>" for a in aging)
             body = (f'<div class="card"><p>Total customer dues: {money(tot, cur)}</p>' + table(["Customer", "Opening balance", "Total due"], rh) + '</div>'
                     '<div class="card"><h3>Due aging (by invoice age)</h3>' + table(["Customer", "0-30 days", "31-60 days", "61-90 days", "90+ days", "Total"], ah) + '</div>')
-            return self.send_html(200, page(user, biz, "Customer dues report", body))
+            return self._report_send(user, biz, "Customer dues report", body)
         if slug == "supplier-dues":
             rows = q("SELECT * FROM suppliers WHERE business_id=? ORDER BY name", (b,))
             rh = "".join(f"<tr><td>{esc(r['name'])}</td><td>{money(r['opening_balance'], cur)}</td><td>{money(supplier_due(b, r['id']), cur)}</td></tr>" for r in rows)
@@ -6735,7 +6935,7 @@ class Handler(BaseHTTPRequestHandler):
             ah = "".join(f"<tr><td>{esc(a['name'])}</td><td>{money(a['buckets']['0-30'], cur)}</td><td>{money(a['buckets']['31-60'], cur)}</td><td>{money(a['buckets']['61-90'], cur)}</td><td>{money(a['buckets']['90+'], cur)}</td><td>{money(sum(a['buckets'].values()), cur)}</td></tr>" for a in aging)
             body = (f'<div class="card"><p>Total supplier dues: {money(tot, cur)}</p>' + table(["Supplier", "Opening balance", "Total due"], rh) + '</div>'
                     '<div class="card"><h3>Due aging (by purchase age)</h3>' + table(["Supplier", "0-30 days", "31-60 days", "61-90 days", "90+ days", "Total"], ah) + '</div>')
-            return self.send_html(200, page(user, biz, "Supplier dues report", body))
+            return self._report_send(user, biz, "Supplier dues report", body)
         if slug == "profit-loss":
             rev = q("SELECT COALESCE(SUM(total),0) FROM sales WHERE business_id=? AND sale_date BETWEEN ? AND ?", (b, frm, to), one=True)[0]
             cogs = self._cogs(b, frm, to)
@@ -6745,7 +6945,7 @@ class Handler(BaseHTTPRequestHandler):
                 f'<p>Revenue: {money(rev, cur)}<br>Cost of goods sold: {money(cogs, cur)}<br>Gross profit: {money(rev - cogs, cur)}<br>Expenses: {money(exps, cur)}<br><b>Net profit: {money(rev - cogs - exps, cur)}</b></p>'
                 '<h3>Simple view (as originally specified)</h3>'
                 f'<p>Sales {money(rev, cur)} - Purchases {money(purch, cur)} - Expenses {money(exps, cur)} = {money(rev - purch - exps, cur)}<br><i>Note: purchases buy stock, they are not all sold yet, so the inventory-accurate figure above is the correct profit.</i></p></div>')
-            return self.send_html(200, page(user, biz, "Profit / Loss report", body))
+            return self._report_send(user, biz, "Profit / Loss report", body)
         if slug == "balance-sheet":
             inv_val = q("SELECT COALESCE(SUM(stock * purchase_price),0) FROM products WHERE business_id=?", (b,), one=True)[0]
             recv = sum(customer_due(b, r["id"]) for r in q("SELECT id FROM customers WHERE business_id=?", (b,)))
@@ -6759,7 +6959,7 @@ class Handler(BaseHTTPRequestHandler):
                 f'<p><b>Assets</b><br>Inventory at cost: {money(inv_val, cur)}<br>Receivables (customer dues): {money(recv, cur)}<br>Cash (sales paid - purchases paid - expenses): {money(cash, cur)}<br><b>Total assets: {money(assets, cur)}</b></p>'
                 f'<p><b>Liabilities</b><br>Payables (supplier dues): {money(pay, cur)}<br><b>Total liabilities: {money(pay, cur)}</b></p>'
                 f'<p><b>Equity (assets - liabilities): {money(assets - pay, cur)}</b></p></div>')
-            return self.send_html(200, page(user, biz, "Balance sheet", body))
+            return self._report_send(user, biz, "Balance sheet", body)
         if slug == "cash-flow":
             sin = q("SELECT COALESCE(SUM(paid),0) FROM sales WHERE business_id=? AND sale_date BETWEEN ? AND ?", (b, frm, to), one=True)[0]
             pout = q("SELECT COALESCE(SUM(paid),0) FROM purchases WHERE business_id=? AND purchase_date BETWEEN ? AND ?", (b, frm, to), one=True)[0]
@@ -6767,7 +6967,7 @@ class Handler(BaseHTTPRequestHandler):
             body = filt + ('<div class="card"><h3>Cash flow</h3>'
                 f'<p>Cash in (sales paid): {money(sin, cur)}<br>Cash out: purchases paid {money(pout, cur)} + expenses {money(exps, cur)} = {money(pout + exps, cur)}<br><b>Net cash flow: {money(sin - pout - exps, cur)}</b></p>'
                 '<p><i>Payments recorded in /payments are already reflected in the sales/purchases paid totals (they move paid/due), so they are not added again here — that would double-count.</i></p></div>')
-            return self.send_html(200, page(user, biz, "Cash flow report", body))
+            return self._report_send(user, biz, "Cash flow report", body)
         if slug == "receivables":
             rows = q("SELECT * FROM sales WHERE business_id=? AND due>0 AND sale_date BETWEEN ? AND ? ORDER BY id", (b, frm, to))
             rh = ""
@@ -6776,7 +6976,7 @@ class Handler(BaseHTTPRequestHandler):
                 rh += f"<tr><td>{esc(r['invoice_no'])}</td><td>{esc(nm['name']) if nm else 'Walk-in'}</td><td>{esc(r['sale_date'])}</td><td>{money(r['due'], cur)}</td></tr>"
             tot = sum(r["due"] for r in rows)
             body = filt + f'<div class="card"><p>Total receivables (outstanding sales): {money(tot, cur)}</p>' + table(["Invoice", "Customer", "Date", "Due"], rh) + '</div>'
-            return self.send_html(200, page(user, biz, "Receivables report", body))
+            return self._report_send(user, biz, "Receivables report", body)
         if slug == "payables":
             rows = q("SELECT * FROM purchases WHERE business_id=? AND due>0 AND purchase_date BETWEEN ? AND ? ORDER BY id", (b, frm, to))
             rh = ""
@@ -6785,7 +6985,7 @@ class Handler(BaseHTTPRequestHandler):
                 rh += f"<tr><td>{r['id']}</td><td>{esc(nm['name']) if nm else '-'}</td><td>{esc(r['purchase_date'])}</td><td>{money(r['due'], cur)}</td></tr>"
             tot = sum(r["due"] for r in rows)
             body = filt + f'<div class="card"><p>Total payables (outstanding purchases): {money(tot, cur)}</p>' + table(["Purchase #", "Supplier", "Date", "Due"], rh) + '</div>'
-            return self.send_html(200, page(user, biz, "Payables report", body))
+            return self._report_send(user, biz, "Payables report", body)
         if slug == "imei":
             if method == "POST":
                 self.require_role(user, "owner", "admin")
@@ -6816,27 +7016,27 @@ class Handler(BaseHTTPRequestHandler):
                          + f'<p><label>Product</label><br><select name="product_id" required>{opts}</select></p>'
                          + field("IMEI / serial", "imei", "", "text", True) + field("Note", "note")
                          + '<button type="submit">Register</button></form></div>')
-            return self.send_html(200, page(user, biz, "IMEI report", body))
+            return self._report_send(user, biz, "IMEI report", body)
         if slug == "expense-cost":
             rows = q("SELECT COALESCE(category,'') AS cat, COUNT(*), COALESCE(SUM(amount),0) FROM expenses WHERE business_id=? AND expense_date BETWEEN ? AND ? GROUP BY cat ORDER BY 3 DESC", (b, frm, to))
             tot = sum(r[2] for r in rows)
             rh = "".join(f"<tr><td>{esc(r[0]) or '(no category)'}</td><td>{r[1]}</td><td>{money(r[2], cur)}</td><td>{(r[2] / tot * 100 if tot else 0):.1f}%</td></tr>" for r in rows)
             body = filt + f'<div class="card"><p>Total expenses: {money(tot, cur)}</p>' + table(["Category", "Count", "Amount", "Share"], rh) + '</div>'
-            return self.send_html(200, page(user, biz, "Expense-cost report", body))
+            return self._report_send(user, biz, "Expense-cost report", body)
         if slug == "gross-profit":
             rev = q("SELECT COALESCE(SUM(total),0) FROM sales WHERE business_id=? AND sale_date BETWEEN ? AND ?", (b, frm, to), one=True)[0]
             cogs = self._cogs(b, frm, to)
             margin = ((rev - cogs) / rev * 100 if rev else 0)
             body = filt + ('<div class="card"><h3>Gross profit</h3>'
                 f'<p>Revenue: {money(rev, cur)}<br>Cost of goods sold: {money(cogs, cur)}<br><b>Gross profit: {money(rev - cogs, cur)} (margin {margin:.1f}%)</b><br><i>COGS uses the purchase price stored on each sale line at sale time.</i></p></div>')
-            return self.send_html(200, page(user, biz, "Gross profit report", body))
+            return self._report_send(user, biz, "Gross profit report", body)
         if slug == "real-profit":
             rev = q("SELECT COALESCE(SUM(total),0) FROM sales WHERE business_id=? AND sale_date BETWEEN ? AND ?", (b, frm, to), one=True)[0]
             cogs = self._cogs(b, frm, to)
             exps = q("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE business_id=? AND expense_date BETWEEN ? AND ?", (b, frm, to), one=True)[0]
             body = filt + ('<div class="card"><h3>Real profit</h3>'
                 f'<p>Revenue: {money(rev, cur)}<br>Less COGS: {money(cogs, cur)}<br>Gross profit: {money(rev - cogs, cur)}<br>Less expenses: {money(exps, cur)}<br><b>Real profit: {money(rev - cogs - exps, cur)}</b></p></div>')
-            return self.send_html(200, page(user, biz, "Real profit report", body))
+            return self._report_send(user, biz, "Real profit report", body)
         if slug == "profit-by-category":
             rows = q("""SELECT COALESCE(c.name,'Uncategorized') AS cat,
                         COALESCE(SUM(si.amount),0) AS rev,
@@ -6848,7 +7048,7 @@ class Handler(BaseHTTPRequestHandler):
                         GROUP BY cat ORDER BY rev DESC""", (b, frm, to))
             rh = "".join(f"<tr><td>{esc(r['cat'])}</td><td>{money(r['rev'], cur)}</td><td>{money(r['cost'], cur)}</td><td>{money(r['rev'] - r['cost'], cur)}</td></tr>" for r in rows)
             body = filt + '<div class="card">' + table(["Category", "Revenue", "COGS", "Profit"], rh) + '</div>'
-            return self.send_html(200, page(user, biz, "Profit by category report", body))
+            return self._report_send(user, biz, "Profit by category report", body)
         if slug == "profit-by-product":
             rows = q("""SELECT si.product_name AS nm, COALESCE(SUM(si.amount),0) AS rev,
                         COALESCE(SUM(si.qty * COALESCE(si.cost_price, p.purchase_price, 0)),0) AS cost
@@ -6857,7 +7057,7 @@ class Handler(BaseHTTPRequestHandler):
                         WHERE s.business_id=? AND s.sale_date BETWEEN ? AND ?
                         GROUP BY nm ORDER BY rev DESC""", (b, frm, to))
             rh = "".join(f"<tr><td>{esc(r['nm'])}</td><td>{money(r['rev'], cur)}</td><td>{money(r['cost'], cur)}</td><td>{money(r['rev'] - r['cost'], cur)}</td></tr>" for r in rows)
-            return self.send_html(200, page(user, biz, "Profit by product", filt + '<div class="card">' + table(["Product", "Revenue", "COGS", "Profit"], rh) + '</div>'))
+            return self._report_send(user, biz, "Profit by product", filt + '<div class="card">' + table(["Product", "Revenue", "COGS", "Profit"], rh) + '</div>')
         if slug == "profit-by-brand":
             rows = q("""SELECT COALESCE(p.brand,'') AS br, COALESCE(SUM(si.amount),0) AS rev,
                         COALESCE(SUM(si.qty * COALESCE(si.cost_price, p.purchase_price, 0)),0) AS cost
@@ -6866,7 +7066,7 @@ class Handler(BaseHTTPRequestHandler):
                         WHERE s.business_id=? AND s.sale_date BETWEEN ? AND ?
                         GROUP BY br ORDER BY rev DESC""", (b, frm, to))
             rh = "".join(f"<tr><td>{esc(r['br']) or '(no brand)'}</td><td>{money(r['rev'], cur)}</td><td>{money(r['cost'], cur)}</td><td>{money(r['rev'] - r['cost'], cur)}</td></tr>" for r in rows)
-            return self.send_html(200, page(user, biz, "Profit by brand", filt + '<div class="card">' + table(["Brand", "Revenue", "COGS", "Profit"], rh) + '</div>'))
+            return self._report_send(user, biz, "Profit by brand", filt + '<div class="card">' + table(["Brand", "Revenue", "COGS", "Profit"], rh) + '</div>')
         if slug == "profit-by-customer":
             rows = q("""SELECT COALESCE(c.name,'Walk-in') AS nm,
                         COALESCE(SUM(si.amount),0) AS rev,
@@ -6877,34 +7077,34 @@ class Handler(BaseHTTPRequestHandler):
                         WHERE s.business_id=? AND s.sale_date BETWEEN ? AND ?
                         GROUP BY nm ORDER BY rev DESC""", (b, frm, to))
             rh = "".join(f"<tr><td>{esc(r['nm'])}</td><td>{money(r['rev'], cur)}</td><td>{money(r['cost'], cur)}</td><td>{money(r['rev'] - r['cost'], cur)}</td></tr>" for r in rows)
-            return self.send_html(200, page(user, biz, "Profit by customer", filt + '<div class="card">' + table(["Customer", "Revenue", "COGS", "Profit"], rh) + '</div>'))
+            return self._report_send(user, biz, "Profit by customer", filt + '<div class="card">' + table(["Customer", "Revenue", "COGS", "Profit"], rh) + '</div>')
         if slug in ("sales-daily", "sales-weekly", "sales-monthly"):
             fmt = {"sales-daily": "%Y-%m-%d", "sales-weekly": "%Y-W%W", "sales-monthly": "%Y-%m"}[slug]
             rows = q(f"""SELECT strftime('{fmt}', sale_date) AS per, COUNT(*) AS n, COALESCE(SUM(total),0) AS tot,
                         COALESCE(SUM(paid),0) AS paid FROM sales WHERE business_id=? AND sale_date BETWEEN ? AND ?
                         GROUP BY per ORDER BY per""", (b, frm, to))
             rh = "".join(f"<tr><td>{esc(r['per'])}</td><td>{r['n']}</td><td>{money(r['tot'], cur)}</td><td>{money(r['paid'], cur)}</td></tr>" for r in rows)
-            return self.send_html(200, page(user, biz, {"sales-daily": "Daily sales", "sales-weekly": "Weekly sales", "sales-monthly": "Monthly sales"}[slug], filt + '<div class="card">' + table(["Period", "Sales", "Total", "Paid"], rh) + '</div>'))
+            return self._report_send(user, biz, {"sales-daily": "Daily sales", "sales-weekly": "Weekly sales", "sales-monthly": "Monthly sales"}[slug], filt + '<div class="card">' + table(["Period", "Sales", "Total", "Paid"], rh) + '</div>')
         if slug == "discount":
             rows = q("SELECT invoice_no, sale_date, discount, total FROM sales WHERE business_id=? AND discount>0 AND sale_date BETWEEN ? AND ? ORDER BY id DESC", (b, frm, to))
             tot = sum(r["discount"] for r in rows)
             rh = "".join(f"<tr><td>{esc(r['invoice_no'])}</td><td>{esc(r['sale_date'])}</td><td>{money(r['discount'], cur)}</td><td>{money(r['total'], cur)}</td></tr>" for r in rows)
-            return self.send_html(200, page(user, biz, "Discount report", filt + f'<div class="card"><p>Total discounts given: {money(tot, cur)}</p>' + table(["Invoice", "Date", "Discount", "Total"], rh) + '</div>'))
+            return self._report_send(user, biz, "Discount report", filt + f'<div class="card"><p>Total discounts given: {money(tot, cur)}</p>' + table(["Invoice", "Date", "Discount", "Total"], rh) + '</div>')
         if slug == "returns":
             rows = q("SELECT * FROM purchase_returns WHERE business_id=? AND return_date BETWEEN ? AND ? ORDER BY id DESC", (b, frm, to))
             tot = sum(r["total"] for r in rows)
             rh = "".join(f"<tr><td>{esc(r['return_date'])}</td><td>Purchase #{r['purchase_id']}</td><td>{money(r['total'], cur)}</td><td>{esc(r['note'])}</td></tr>" for r in rows)
-            return self.send_html(200, page(user, biz, "Purchase returns report", filt + f'<div class="card"><p>Total purchase returns: {money(tot, cur)}</p>' + table(["Date", "Purchase", "Amount", "Note"], rh) + '</div>'))
+            return self._report_send(user, biz, "Purchase returns report", filt + f'<div class="card"><p>Total purchase returns: {money(tot, cur)}</p>' + table(["Date", "Purchase", "Amount", "Note"], rh) + '</div>')
         if slug == "stock-valuation":
             rows = q("SELECT name, COALESCE(brand,'') AS br, stock, purchase_price, selling_price FROM products WHERE business_id=? ORDER BY name", (b,))
             rh = "".join(f"<tr><td>{esc(r['name'])}</td><td>{esc(r['br'])}</td><td>{r['stock']}</td><td>{money(r['stock'] * r['purchase_price'], cur)}</td><td>{money(r['stock'] * r['selling_price'], cur)}</td></tr>" for r in rows)
             cv = sum(r["stock"] * r["purchase_price"] for r in rows); sv = sum(r["stock"] * r["selling_price"] for r in rows)
-            return self.send_html(200, page(user, biz, "Stock valuation", f'<div class="card"><p>At cost: {money(cv, cur)} | At selling price: {money(sv, cur)}</p>' + table(["Product", "Brand", "Stock", "Value (cost)", "Value (selling)"], rh) + '</div>'))
+            return self._report_send(user, biz, "Stock valuation", f'<div class="card"><p>At cost: {money(cv, cur)} | At selling price: {money(sv, cur)}</p>' + table(["Product", "Brand", "Stock", "Value (cost)", "Value (selling)"], rh) + '</div>')
         if slug == "stock-movement":
             rows = q("""SELECT m.*, p.name AS pname FROM stock_movements m JOIN products p ON p.id=m.product_id
                         WHERE m.business_id=? AND m.move_date BETWEEN ? AND ? ORDER BY m.id DESC LIMIT 200""", (b, frm, to))
             rh = "".join(f"<tr><td>{esc(r['move_date'])}</td><td>{esc(r['pname'])}</td><td>{esc(r['kind'])}</td><td>{r['qty']}</td><td>{esc(r['note'])}</td></tr>" for r in rows)
-            return self.send_html(200, page(user, biz, "Stock movement", filt + '<div class="card">' + table(["Date", "Product", "Kind", "Qty", "Note"], rh) + '</div>'))
+            return self._report_send(user, biz, "Stock movement", filt + '<div class="card">' + table(["Date", "Product", "Kind", "Qty", "Note"], rh) + '</div>')
         if slug == "user-activity":
             rows = q("""SELECT u.email, u.role, COUNT(s.token_hash) AS sess, u.created_at FROM users u
                         LEFT JOIN sessions s ON s.user_id=u.id WHERE u.business_id=? GROUP BY u.id ORDER BY u.id""", (b,))
@@ -6912,7 +7112,7 @@ class Handler(BaseHTTPRequestHandler):
             body = ('<div class="card"><h3>User activity</h3><p>Note: LABH records sessions per user, not a per-action audit log — '
                     'so this report shows accounts and their active sessions, not every click.</p>'
                     + table(["User", "Role", "Active sessions", "Created"], rh) + '</div>')
-            return self.send_html(200, page(user, biz, "User activity", body))
+            return self._report_send(user, biz, "User activity", body)
         if slug == "business-analytics":
             top_prod = q("""SELECT si.product_name AS nm, COALESCE(SUM(si.qty),0) AS qq, COALESCE(SUM(si.amount),0) AS rev
                             FROM sale_items si JOIN sales s ON s.id=si.sale_id WHERE s.business_id=? AND s.sale_date BETWEEN ? AND ?
@@ -6925,7 +7125,7 @@ class Handler(BaseHTTPRequestHandler):
             body = (filt + '<div class="card"><h3>Top products</h3>' + table(["Product", "Qty", "Revenue"], "".join(f"<tr><td>{esc(r['nm'])}</td><td>{r['qq']}</td><td>{money(r['rev'], cur)}</td></tr>" for r in top_prod)) + '</div>'
                     '<div class="card"><h3>Top customers</h3>' + table(["Customer", "Sales"], "".join(f"<tr><td>{esc(r['nm'])}</td><td>{money(r['rev'], cur)}</td></tr>" for r in top_cust)) + '</div>'
                     '<div class="card"><h3>Monthly sales</h3>' + table(["Month", "Sales"], "".join(f"<tr><td>{esc(r['per'])}</td><td>{money(r['tot'], cur)}</td></tr>" for r in monthly)) + '</div>')
-            return self.send_html(200, page(user, biz, "Business analytics", body))
+            return self._report_send(user, biz, "Business analytics", body)
         raise NotFound("Report not found")
 
 def main():

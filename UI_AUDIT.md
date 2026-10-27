@@ -98,6 +98,54 @@ demo copy only:
   fmt_dt_short helper) on the right, with hairline dividers and
   "View All" in the section header. Same 10 newest transactions,
   same data and same /sales target — presentation only.
+- Blueprint/Spec Phase 1 (2026-10-27, master spec BLUEPRINT.md +
+  SPEC.md; demo only, locally verified, redeploy in flight):
+  - NEW /reports/purchases (the missing 8th-family report): Date,
+    Invoice (PUR-XXXX display), Supplier, Product, Qty, Cost,
+    Discount, Total, Payment Status + date/supplier/status filters +
+    KPI/total row + CSV (UTF-8 BOM) + Print. Purchase-line discount
+    added (purchase_items.discount via _add_col migration; old rows
+    read 0, totals bit-identical); purchase form has a Discount
+    input; detail shows a Discount column when any line has one;
+    purchase return refunds use the discounted effective unit.
+  - Sales Return + Cancel/Void (owner/admin, CSRF-checked) on the
+    invoice view: per-item qty + reason returns (new tables
+    sales_returns + sales_return_items; stock restored + 'sale-return'
+    movements; sale total/due move, due = max(0, total - paid);
+    excess paid stored as the return's refund, never a negative
+    payment; original items never edited). Cancel returns all
+    remaining items + marks sales.status 'cancelled' (via _add_col,
+    default 'active'); cancelled sales reject further returns;
+    invoice shows Status + returns history card; forms hidden once
+    cancelled. Refund semantics note: each return record's refund is
+    a per-moment snapshot, NOT a cumulative sum — summing them
+    double-counts.
+  - Dashboard stat cards are now links (Sales/Orders -> /sales,
+    Profit -> /reports/profit-loss, Due -> /customers/dues), same
+    styling.
+  - /sales gained From/To date inputs (q + status preserved).
+  - Every /reports/<slug> page ends with green left-aligned
+    'Powered by LABH Smart Business Manager' (single _report_send
+    choke point) and starts with a compact business header (business
+    name + currency only — the businesses table has no phone/address
+    field — and NO LABH branding in the header, per spec v2).
+  - Notification links: notifications.target via _add_col; low-stock
+    -> /products, overdue -> /customers/dues; titles link when a
+    target exists, plain text otherwise.
+  - Expense created_by + reference via _add_col; create sets
+    created_by to the user's email; form has a Reference field; list
+    shows 'Ref: … · By: …'. Attachment upload NOT built (unsupported).
+  - Purchase detail: Print button ADDED (window.print, action cards
+    noprint). Purchase Edit NOT added (editing a received purchase
+    is accounting-sensitive — pending user decision).
+  - CSV exports now UTF-8 BOM (all 6 CSV downloads; verified
+    ef bb bf prefix). Bell unread count verified ALREADY working
+    (real unread count, shown only when > 0).
+  - 11-item Reports menu UNTOUCHED — /reports/purchases is URL-only
+    until the user decides its menu placement.
+  - Pre-existing gap noticed, left alone: purchase return-item does
+    NOT validate against already-returned quantities (a purchase
+    item can currently be returned twice); sales returns do validate.
 - Premium Invoices + View/Print (2026-10-27, user: "invoice page
   ta aro premium koro and invoice view and print ar option add
   koro"): the /invoices list is now premium rows (receipt icon
