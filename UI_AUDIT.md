@@ -87,6 +87,17 @@ demo copy only:
   tables. The 15 other report pages still exist at their URLs and
   the menu's 11 detail pages are unchanged — only the index
   listing was removed.
+- Premium Recent Transactions (2026-10-27, user: "recent
+  transection ta aro premium Lagbe" + phone screenshot): the
+  dashboard section is no longer a cramped table (no # column, no
+  horizontal scroll). Each row is now: colored icon tile (Sale
+  green / Purchase blue / Payment amber) + bold title (Sale
+  INV-DEMO-008) + muted sub line (customer · products) on the
+  left, and bold amount + colored status (Paid green / Partial
+  orange / Due red) + short time ("26 Oct, 10:00 AM", new
+  fmt_dt_short helper) on the right, with hairline dividers and
+  "View All" in the section header. Same 10 newest transactions,
+  same data and same /sales target — presentation only.
 
 ## Phase 2 (screen structure — NOT done, needs user direction)
 

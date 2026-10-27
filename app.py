@@ -401,6 +401,21 @@ def fmt_dt(s):
     except Exception:
         return s
 
+
+def fmt_dt_short(s):
+    """'2026-10-26T10:00:00' -> '26 Oct, 10:00 AM'; date-only -> '26 Oct'."""
+    if not s:
+        return ""
+    s = str(s)
+    try:
+        from datetime import datetime
+        d = datetime.fromisoformat(s.replace("Z", ""))
+        if len(s) <= 10:
+            return f"{d.day} {d.strftime('%b')}"
+        return f"{d.day} {d.strftime('%b, %I:%M %p')}"
+    except Exception:
+        return s
+
 def today():
     return date.today().isoformat()
 
@@ -1259,6 +1274,25 @@ main input,main select,main textarea{background:#f8fafc;border:1px solid #e2e8f0
 table th{background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:11px;letter-spacing:.4px;padding:10px 12px;text-align:left}
 table td a{color:#0f172a;text-decoration:none;font-weight:600}
 table td a:hover{text-decoration:underline}
+/* Premium Recent Transactions rows (dashboard): icon tile + title/sub + amount/status/time. */
+.txn-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.txn-head h3{margin:0}
+.txn-head a{font-size:13px;font-weight:700;color:var(--primary);text-decoration:none;white-space:nowrap}
+.txn-row{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid #f1f5f9}
+.txn-row:last-child{border-bottom:none}
+.txn-ic{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.txn-ic.sale{background:#dcfce7;color:#15803d}
+.txn-ic.purchase{background:#dbeafe;color:#1d4ed8}
+.txn-ic.payment{background:#fef3c7;color:#b45309}
+.txn-main{flex:1;min-width:0}
+.txn-main b{display:block;font-size:15px;color:#0f172a}
+.txn-main small{display:block;font-size:13px;color:#64748b;margin-top:2px;overflow-wrap:anywhere}
+.txn-right{text-align:right;flex-shrink:0}
+.txn-right b{display:block;font-size:15px;color:#0f172a;white-space:nowrap}
+.txn-right small{display:block;font-size:12px;color:#64748b;margin-top:2px;white-space:nowrap}
+.txn-st-paid{color:#15803d;font-weight:700}
+.txn-st-partial{color:#ea580c;font-weight:700}
+.txn-st-due{color:#dc2626;font-weight:700}
 .hamburger{display:none}
 @media(max-width:767px){.hamburger{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;cursor:pointer;flex-shrink:0}}
 .bellwrap{position:relative;display:inline-flex}
@@ -4862,28 +4896,36 @@ class Handler(BaseHTTPRequestHandler):
                         '<p>No expenses yet.</p>')
         exp_card = ('<div class="card"><h3>Expense Breakdown</h3><p>' + _scope_sel("exp", exp_kind) + '</p>' + _donut + '</div>')
         # --- Recent Transactions (sales + purchases + payments, newest first).
+        # Premium list rows (not a table): icon tile + title/sub + amount/status/time.
         _txns = []
         for _r in q("""SELECT s.*, c.name AS cname, COALESCE(GROUP_CONCAT(si.product_name, ', '), '') AS prods
                       FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
                       LEFT JOIN sale_items si ON si.sale_id=s.id
                       WHERE s.business_id=? GROUP BY s.id ORDER BY s.id DESC LIMIT 10""", (b,)):
             _st = "Paid" if (_r["due"] or 0) <= 0 else ("Partial" if (_r["paid"] or 0) > 0 else "Due")
-            _txns.append(("Sale", f"Sale {esc(_r['invoice_no'])} · {esc(_r['cname'] or 'Walk-in')}" + (f" · {esc(_r['prods'])}" if _r["prods"] else "") + f" · {_st}", _r["total"], _r["created_at"] or _r["sale_date"]))
+            _txns.append(("Sale", f"Sale {esc(_r['invoice_no'])}", esc(_r['cname'] or 'Walk-in') + (f" · {esc(_r['prods'])}" if _r["prods"] else ""), _st, _r["total"], _r["created_at"] or _r["sale_date"]))
         for _r in q("""SELECT pu.*, sup.name AS sname FROM purchases pu LEFT JOIN suppliers sup ON sup.id=pu.supplier_id
                       WHERE pu.business_id=? ORDER BY pu.id DESC LIMIT 10""", (b,)):
-            _txns.append(("Purchase", f"Purchase · {esc(_r['sname'] or 'Supplier')}", _r["total"], _r["created_at"] or _r["purchase_date"]))
+            _pst = "Paid" if (_r["due"] or 0) <= 0 else ("Partial" if (_r["paid"] or 0) > 0 else "Due")
+            _txns.append(("Purchase", "Purchase", esc(_r['sname'] or 'Supplier'), _pst, _r["total"], _r["created_at"] or _r["purchase_date"]))
         for _r in q("""SELECT pay.*, c.name AS cname, sup.name AS sname FROM payments pay
                       LEFT JOIN customers c ON c.id=pay.entity_id AND pay.entity_type='customer'
                       LEFT JOIN suppliers sup ON sup.id=pay.entity_id AND pay.entity_type='supplier'
                       WHERE pay.business_id=? ORDER BY pay.id DESC LIMIT 10""", (b,)):
             _nm = _r["cname"] or _r["sname"] or "Payment"
-            _txns.append(("Payment", f"Payment · {esc(_nm)}" + (f" · {esc(_r['method'])}" if _r["method"] else ""), _r["amount"], _r["created_at"] or _r["pay_date"]))
-        _txns.sort(key=lambda _x: _x[3] or "", reverse=True)
-        _tx_rows = "".join(f"<tr><td>{i + 1}</td><td><span class=\"pill {_tp.lower()}\">{_tp}</span></td><td>{_det}</td><td>{money(_amt, cur)}</td><td>{esc(fmt_dt(_tm))}</td></tr>" for i, (_tp, _det, _amt, _tm) in enumerate(_txns[:10]))
-        txn_card = ('<div class="card"><h3>Recent Transactions</h3>'
-                    + table(["#", "Type", "Details", "Amount", "Time"], _tx_rows)
-                    + ("<p>No transactions yet.</p>" if not _txns else "")
-                    + '<p><a href="/sales">View All &rarr;</a></p></div>')
+            _txns.append(("Payment", "Payment", esc(_nm) + (f" · {esc(_r['method'])}" if _r["method"] else ""), "", _r["amount"], _r["created_at"] or _r["pay_date"]))
+        _txns.sort(key=lambda _x: _x[5] or "", reverse=True)
+        _tx_ic = {"Sale": ("receipt", "sale"), "Purchase": ("truck", "purchase"), "Payment": ("money", "payment")}
+        _tx_rows = ""
+        for (_tp, _title, _sub, _st, _amt, _tm) in _txns[:10]:
+            _ic, _cls = _tx_ic.get(_tp, ("box", "sale"))
+            _st_html = f'<span class="txn-st-{_st.lower()}">{_st}</span> · ' if _st else ""
+            _tx_rows += (f'<div class="txn-row"><span class="txn-ic {_cls}">{icon(_ic, 20)}</span>'
+                         f'<span class="txn-main"><b>{_title}</b><small>{_sub}</small></span>'
+                         f'<span class="txn-right"><b>{money(_amt, cur)}</b><small>{_st_html}{esc(fmt_dt_short(_tm))}</small></span></div>')
+        txn_card = ('<div class="card"><div class="txn-head"><h3>Recent Transactions</h3><a href="/sales">View All &rarr;</a></div>'
+                    + (_tx_rows if _txns else "<p>No transactions yet.</p>")
+                    + '</div>')
         # Carry-over cards for the old period/tab params (kept working).
         tab_card = ""
         if tab == "due":
