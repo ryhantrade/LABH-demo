@@ -92,7 +92,7 @@ import zipfile
 from datetime import date, datetime, timedelta
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, quote_plus, urlparse
 
 VERSION = "2.15.0"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -358,6 +358,28 @@ def init_db():
         _add_col("notifications", "target", "target TEXT NOT NULL DEFAULT ''")
         _add_col("expenses", "created_by", "created_by TEXT NOT NULL DEFAULT ''")
         _add_col("expenses", "reference", "reference TEXT NOT NULL DEFAULT ''")
+        # --- Phase 2 (master spec): per-action audit log, cash/bank
+        # accounts, one-time form tokens.
+        conn.execute("""CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,
+          business_id INTEGER NOT NULL, user_email TEXT NOT NULL DEFAULT '',
+          action TEXT NOT NULL, entity TEXT NOT NULL DEFAULT '',
+          entity_id TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '',
+          created_at TEXT)""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_biz ON audit_log(business_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at)")
+        conn.execute("""CREATE TABLE IF NOT EXISTS accounts(id INTEGER PRIMARY KEY AUTOINCREMENT,
+          business_id INTEGER NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'Cash',
+          opening_balance REAL NOT NULL DEFAULT 0, is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT)""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_accounts_biz ON accounts(business_id)")
+        conn.execute("""CREATE TABLE IF NOT EXISTS form_tokens(token TEXT PRIMARY KEY,
+          business_id INTEGER NOT NULL, user_email TEXT NOT NULL DEFAULT '',
+          form_name TEXT NOT NULL DEFAULT '', created_at TEXT, expires TEXT)""")
+        _add_col("payments", "account_id", "account_id INTEGER")
+        _add_col("expenses", "account_id", "account_id INTEGER")
+        conn.execute("""CREATE TABLE IF NOT EXISTS import_batches(token TEXT PRIMARY KEY,
+          business_id INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT '',
+          raw_text TEXT NOT NULL DEFAULT '', created_at TEXT)""")
         conn.commit()
     finally:
         conn.close()
@@ -1487,6 +1509,16 @@ main>h1{display:none}
 .mobtitle{display:block}
 .mobsearch{display:inline-flex}
 }
+
+/* Phase 2: shared pagination */
+.pager{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 4px;font-size:14px}
+.pg-info{color:#64748b;margin-right:auto}
+.pg-per{display:flex;align-items:center;gap:6px}
+.pg-per select{padding:4px 8px;border:1px solid #cbd5e1;border-radius:8px}
+.pg-btn{display:inline-block;padding:5px 10px;border:1px solid #cbd5e1;border-radius:8px;text-decoration:none;color:#15803d;background:#fff}
+.pg-btn.on{background:#15803d;color:#fff;border-color:#15803d}
+.pg-btn.off{color:#94a3b8;background:#f1f5f9}
+.pg-gap{color:#94a3b8}
 """
 
 
@@ -1549,13 +1581,13 @@ NAV = [("dashboard", "Dashboard"), ("pos", "Quick Sale POS"), ("products", "Prod
        ("customers", "Customers"), ("suppliers", "Suppliers"), ("sales", "Sales"),
        ("brands", "Brands"), ("income", "Income"),
        ("purchases", "Purchases"), ("invoices", "Invoices"), ("payments", "Payments"),
-       ("expenses", "Expenses"), ("reports", "Reports"), ("health", "Business Health"),
+       ("expenses", "Expenses"), ("accounts", "Accounts"), ("reports", "Reports"), ("health", "Business Health"),
        ("ai", "Labh AI"), ("notifications", "Notifications"),
-       ("backup", "Backup"), ("updates", "Updates"), ("settings", "Settings")]
+       ("backup", "Backup"), ("updates", "Updates"), ("admin", "Admin Panel"), ("settings", "Settings")]
 NAV_GROUPS = [("MAIN", ["dashboard", "pos", "sales", "invoices", "customers"]),
               ("INVENTORY", ["products", "categories", "inventory", "brands"]),
               ("PURCHASE", ["purchases", "suppliers"]),
-              ("FINANCE", ["expenses", "income", "payments"]),
+              ("FINANCE", ["expenses", "income", "payments", "accounts"]),
               ("REPORTS", ["reports", "health", "ai"]),
               ("SYSTEM", ["import", "notifications", "backup", "updates", "settings"])]
 NAV_BADGES = {"pos": ("POS", "pos"), "inventory": ("Stock", "stock"), "ai": ("AI", "ai")}
@@ -1583,12 +1615,317 @@ BN = {"Dashboard": "ড্যাশবোর্ড", "Quick Sale POS": "কু�
       "Purchases": "পারচেজ", "Invoices": "ইনভয়েস", "Payments": "পেমেন্ট",
       "Expenses": "খরচ", "Reports": "রিপোর্ট", "Business Health": "বিজনেস হেলথ",
       "Labh AI": "লাভ AI", "Notifications": "নোটিফিকেশন", "Backup": "ব্যাকআপ",
-      "Updates": "আপডেট", "Settings": "সেটিংস", "Login": "লগইন", "Register": "রেজিস্টার"}
+      "Updates": "আপডেট", "Settings": "সেটিংস", "Login": "লগইন", "Register": "রেজিস্টার",
+      "Accounts": "অ্যাকাউন্ট", "Admin Panel": "অ্যাডমিন প্যানেল",
+      # common buttons & actions
+      "Save": "সেভ", "Search": "খুঁজুন", "Filter": "ফিল্টার", "Export": "এক্সপোর্ট",
+      "Export CSV": "CSV এক্সপোর্ট", "Export Excel": "এক্সেল এক্সপোর্ট", "Print": "প্রিন্ট",
+      "Cancel": "বাতিল", "Delete": "ডিলিট", "Edit": "এডিট", "New": "নতুন",
+      "Add": "যোগ করুন", "Update": "আপডেট", "Submit": "সাবমিট", "Confirm": "কনফার্ম",
+      "Back": "পেছনে", "Close": "বন্ধ", "View": "দেখুন", "Details": "বিস্তারিত",
+      "New Sale": "নতুন সেল", "New Product": "নতুন প্রোডাক্ট", "New Purchase": "নতুন পারচেজ",
+      "New Customer": "নতুন কাস্টমার", "New Supplier": "নতুন সাপ্লায়ার",
+      "+ New Sale": "+ নতুন সেল", "+ New Product": "+ নতুন প্রোডাক্ট",
+      "+ New Purchase": "+ নতুন পারচেজ", "+ New Customer": "+ নতুন কাস্টমার",
+      "+ New Supplier": "+ নতুন সাপ্লায়ার", "+ Add Expense": "+ খরচ যোগ",
+      "Complete Sale": "সেল সম্পন্ন", "Save product": "প্রোডাক্ট সেভ",
+      "Save changes": "পরিবর্তন সেভ", "Delete product": "প্রোডাক্ট ডিলিট",
+      "Record payment": "পেমেন্ট রেকর্ড", "Save expense": "খরচ সেভ",
+      "Save account": "অ্যাকাউন্ট সেভ", "New account": "নতুন অ্যাকাউন্ট",
+      # form labels
+      "Name": "নাম", "Phone": "ফোন", "Email": "ইমেইল", "Address": "ঠিকানা",
+      "Customer": "কাস্টমার", "Supplier": "সাপ্লায়ার", "Product": "প্রোডাক্ট",
+      "Quantity": "পরিমাণ", "Price": "দাম", "Unit Price": "একক দাম",
+      "Purchase price": "ক্রয়মূল্য", "Selling price": "বিক্রয়মূল্য",
+      "Selling price (RP)": "বিক্রয়মূল্য (RP)", "DP price": "DP দাম",
+      "RP price": "RP দাম", "MRP price": "MRP দাম", "Wholesale price": "পাইকারি দাম",
+      "Category": "ক্যাটাগরি", "Brand": "ব্র্যান্ড", "SKU": "SKU",
+      "Barcode": "বারকোড", "Location": "লোকেশন", "Stock": "স্টক",
+      "Opening stock": "ওপেনিং স্টক", "Low-stock threshold": "লো-স্টক সীমা",
+      "Opening balance": "ওপেনিং ব্যালেন্স", "Opening": "ওপেনিং",
+      "Amount": "টাকা", "Total": "মোট", "Subtotal": "সাবটোটাল",
+      "Discount": "ডিসকাউন্ট", "Paid": "পরিশোধিত", "Due": "বকেয়া",
+      "Paid amount": "পরিশোধের পরিমাণ", "Payment amount": "পেমেন্টের পরিমাণ",
+      "Payment method": "পেমেন্ট মাধ্যম", "Method": "মাধ্যম",
+      "Method (cash/bKash/bank)": "মাধ্যম (ক্যাশ/বিকাশ/ব্যাংক)",
+      "Date": "তারিখ", "Sale date": "বিক্রয়ের তারিখ", "Note": "নোট",
+      "Notes": "নোটস", "Description": "বিবরণ", "Title": "শিরোনাম",
+      "Reference": "রেফারেন্স", "Salesperson": "বিক্রয়কর্মী",
+      "Type": "ধরন", "Status": "স্ট্যাটাস", "Account": "অ্যাকাউন্ট",
+      "Account name": "অ্যাকাউন্টের নাম",
+      # table headers
+      "Invoice": "ইনভয়েস", "Customer Name": "কাস্টমারের নাম",
+      "Product Name": "প্রোডাক্টের নাম", "SKU-Barcode": "SKU-বারকোড",
+      "Current Stock": "বর্তমান স্টক", "Stock Value": "স্টকের মূল্য",
+      "Last Transaction": "শেষ লেনদেন", "Created By": "তৈরিকারী",
+      "Created": "তৈরি", "Action": "অ্যাকশন", "Actions": "অ্যাকশন",
+      "User": "ইউজার", "Role": "রোল", "Users": "ইউজাররা",
+      "Time": "সময়", "Entity": "এনটিটি", "Ref": "রেফ",
+      "Party": "পক্ষ", "Purchase": "পারচেজ",
+      # statuses
+      "Paid": "পরিশোধিত", "Partial": "আংশিক", "Due": "বকেয়া",
+      "Active": "সক্রিয়", "Inactive": "নিষ্ক্রিয়",
+      "All": "সব", "In Stock": "স্টকে আছে", "Low Stock": "কম স্টক",
+      "Out of Stock": "স্টক শেষ",
+      # misc UI
+      "Per page": "প্রতি পেজ", "Prev": "আগে", "Next": "পরে",
+      "of": "এর", "No actions logged yet": "এখনো কোনো অ্যাকশন লগ হয়নি",
+      "Action log": "অ্যাকশন লগ", "User activity": "ইউজার অ্যাক্টিভিটি",
+      "Cash / Bank Accounts": "ক্যাশ / ব্যাংক অ্যাকাউন্ট",
+      "Current Balance": "বর্তমান ব্যালেন্স",
+      "Role / Permission Matrix": "রোল / পারমিশন ম্যাট্রিক্স",
+      "Import preview": "ইমপোর্ট প্রিভিউ", "Bulk Import": "বাল্ক ইমপোর্ট",
+      "Confirm import": "ইমপোর্ট কনফার্ম",
+      "From": "থেকে", "To": "পর্যন্ত"}
 def tr(text):
     try:
         return BN.get(text, text) if get_setting("lang") == "bn" else text
     except Exception:
         return text
+
+# ---------------------------------------------------------------- Phase 2 helpers
+def audit(user, action, entity, entity_id="", detail=""):
+    """Per-action audit log. touch=False: audit writes never trigger backups."""
+    try:
+        b = user["business_id"] if isinstance(user, dict) else user
+        email = user.get("email", "") if isinstance(user, dict) else ""
+        exec_db("INSERT INTO audit_log(business_id,user_email,action,entity,entity_id,detail,created_at)"
+                " VALUES(?,?,?,?,?,?,?)",
+                (b, email, action, entity, str(entity_id), str(detail)[:500], now_iso()), touch=False)
+    except Exception:
+        pass
+
+
+def paginate(rows, qs, base):
+    """Shared pagination control: 10/25/50/100/All.
+
+    qs = parse_qs dict, base = path (e.g. '/sales'). Returns
+    (page_rows, pager_html). Preserves all other query params."""
+    try:
+        page = max(1, int(qs.get("page", ["1"])[0]))
+    except Exception:
+        page = 1
+    per_raw = qs.get("per", ["25"])[0]
+    per = 10 ** 9 if per_raw == "all" else (int(per_raw) if per_raw in ("10", "25", "50", "100") else 25)
+    total = len(rows)
+    pages = max(1, -(-total // per))
+    page = min(page, pages)
+    s = (page - 1) * per
+    page_rows = rows[s:s + per]
+
+    def _q(**over):
+        parts = []
+        for k, vs in qs.items():
+            if k in ("page", "per"):
+                continue
+            for v in vs:
+                parts.append(f"{k}={quote_plus(str(v))}")
+        for k, v in over.items():
+            parts.append(f"{k}={quote_plus(str(v))}")
+        return "&".join(parts)
+
+    per_opts = "".join(
+        f'<option value="{v}"{" selected" if per_raw == v else ""}>{esc(tr(l))}</option>'
+        for v, l in [("10", "10"), ("25", "25"), ("50", "50"), ("100", "100"), ("all", "All")])
+    start_n = s + 1 if total else 0
+    end_n = min(s + per, total)
+    prev = (f'<a class="pg-btn" href="{base}?{_q(page=page-1)}">&laquo; {esc(tr("Prev"))}</a>'
+            if page > 1 else f'<span class="pg-btn off">&laquo; {esc(tr("Prev"))}</span>')
+    nxt = (f'<a class="pg-btn" href="{base}?{_q(page=page+1)}">{esc(tr("Next"))} &raquo;</a>'
+           if page < pages else f'<span class="pg-btn off">{esc(tr("Next"))} &raquo;</span>')
+    nums = ""
+    win = [p for p in range(1, pages + 1) if p == 1 or p == pages or abs(p - page) <= 2]
+    last = 0
+    for p in win:
+        if p - last > 1:
+            nums += '<span class="pg-gap">…</span>'
+        nums += (f'<span class="pg-btn on">{p}</span>' if p == page
+                 else f'<a class="pg-btn" href="{base}?{_q(page=p)}">{p}</a>')
+        last = p
+    html = (f'<div class="pager"><span class="pg-info">{start_n}–{end_n} {esc(tr("of"))} {total}</span>'
+            f'<form method="get" action="{base}" class="pg-per"><span>{esc(tr("Per page"))}</span><select name="per" onchange="this.form.submit()">{per_opts}</select>'
+            + "".join(f'<input type="hidden" name="{esc(k)}" value="{esc(vs[0])}">' for k, vs in qs.items() if k not in ("page", "per") and vs)
+            + '</form>' + prev + nums + nxt + '</div>')
+    return page_rows, html, s
+
+
+def xlsx_bytes(sheets):
+    """Minimal genuine .xlsx writer (stdlib only: zipfile + XML).
+
+    sheets = list of (title, headers, rows); rows are lists of
+    str/int/float. Returns bytes of a valid .xlsx file."""
+    import io as _io, zipfile as _zf, re as _re
+    from xml.sax.saxutils import escape as _esc
+
+    def _col_letter(i):
+        s = ""
+        i += 1
+        while i:
+            i, r = divmod(i - 1, 26)
+            s = chr(65 + r) + s
+        return s
+
+    def _cell(ref, val, style=0):
+        if val is None:
+            val = ""
+        if isinstance(val, bool):
+            return f'<c r="{ref}" s="{style}"><v>{"1" if val else "0"}</v></c>'
+        if isinstance(val, (int, float)) and not isinstance(val, bool):
+            return f'<c r="{ref}" s="{style}"><v>{val}</v></c>'
+        return f'<c r="{ref}" s="{style}" t="inlineStr"><is><t>{_esc(str(val))}</t></is></c>'
+
+    styles = ('<?xml version="1.0" encoding="UTF-8"?>'
+              '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+              '<fonts><font><sz val="11"/></font>'
+              '<font><b/><color rgb="FFFFFFFF"/><sz val="11"/></font></fonts>'
+              '<fills><fill><patternFill patternType="none"/></fill>'
+              '<fill><patternFill patternType="gray125"/></fill>'
+              '<fill><patternFill patternType="solid"><fgColor rgb="FF15803D"/><bgColor indexed="64"/></patternFill></fill></fills>'
+              '<borders><border><left/><right/><top/><bottom/><diagonal/></border>'
+              '<border><left style="thin"><color indexed="64"/></left>'
+              '<right style="thin"><color indexed="64"/></right>'
+              '<top style="thin"><color indexed="64"/></top>'
+              '<bottom style="thin"><color indexed="64"/></bottom><diagonal/></border></borders>'
+              '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+              '<cellXfs count="3">'
+              '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0"/>'
+              '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFill="1"/>'
+              '<xf numFmtId="4" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1"/>'
+              '</cellXfs></styleSheet>')
+
+    sheet_xmls = {}
+    for si, (title, headers, rows) in enumerate(sheets, start=1):
+        t = _re.sub(r'[\[\]\*\?/\\:]', "", str(title))[:31] or f"Sheet{si}"
+        lines = ['<?xml version="1.0" encoding="UTF-8"?>'
+                 '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                 '<sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetData>']
+        # header row (style 1 = green header)
+        hr = 1
+        cells = "".join(_cell(f"{_col_letter(ci)}{hr}", h, 1) for ci, h in enumerate(headers))
+        lines.append(f"<row r='{hr}'>{cells}</row>")
+        for ri, row in enumerate(rows, start=2):
+            cells = []
+            for ci, v in enumerate(row):
+                st = 2 if isinstance(v, (int, float)) and not isinstance(v, bool) and ci else 0
+                cells.append(_cell(f"{_col_letter(ci)}{ri}", v, st))
+            lines.append(f"<row r='{ri}'>{''.join(cells)}</row>")
+        # column widths
+        widths = []
+        for ci, h in enumerate(headers):
+            mx = max([len(str(h))] + [len(str(r[ci])) if ci < len(r) and r[ci] is not None else 0 for r in rows])
+            widths.append(f'<col min="{ci+1}" max="{ci+1}" width="{min(50, max(10, mx + 2))}" customWidth="1"/>')
+        lines.append("</sheetData>")
+        if widths:
+            lines.insert(2, "<cols>" + "".join(widths) + "</cols>")
+        lines.append('<autoFilter ref="A1:%s%d"/>' % (_col_letter(len(headers) - 1), len(rows) + 1) if headers else "")
+        lines.append("</worksheet>")
+        sheet_xmls[si] = ("".join(lines), t)
+
+    buf = _io.BytesIO()
+    with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml",
+                   '<?xml version="1.0" encoding="UTF-8"?>'
+                   '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                   '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                   '<Default Extension="xml" ContentType="application/xml"/>'
+                   '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+                   '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+                   + "".join(f'<Override PartName="/xl/worksheets/sheet{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' for i in sheet_xmls)
+                   + "</Types>")
+        z.writestr("_rels/.rels",
+                   '<?xml version="1.0" encoding="UTF-8"?>'
+                   '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                   '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+                   "</Relationships>")
+        z.writestr("xl/workbook.xml",
+                   '<?xml version="1.0" encoding="UTF-8"?>'
+                   '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+                   'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
+                   + "".join(f'<sheet name="{_esc(t)}" sheetId="{i}" r:id="rId{i}"/>' for i, (_, t) in sheet_xmls.items())
+                   + "</sheets></workbook>")
+        z.writestr("xl/_rels/workbook.xml.rels",
+                   '<?xml version="1.0" encoding="UTF-8"?>'
+                   '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                   + "".join(f'<Relationship Id="rId{i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{i}.xml"/>' for i in sheet_xmls)
+                   + '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+                   "</Relationships>")
+        z.writestr("xl/styles.xml", styles)
+        for i, (xml, _t) in sheet_xmls.items():
+            z.writestr(f"xl/worksheets/sheet{i}.xml", xml)
+    return buf.getvalue()
+
+
+def _xlsx_send(handler, title, headers, rows, filename):
+    """Send a genuine .xlsx file download."""
+    data = xlsx_bytes([(title, headers, rows)])
+    return handler.send_file(data, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+def new_form_token(user, form_name):
+    """One-time form token (duplicate-submission guard). Returns the token."""
+    tok = secrets.token_urlsafe(24)
+    try:
+        exec_db("INSERT INTO form_tokens(token,business_id,user_email,form_name,created_at,expires)"
+                " VALUES(?,?,?,?,?,?)",
+                (tok, user["business_id"], user.get("email", ""), form_name, now_iso(),
+                 (datetime.now() + timedelta(hours=6)).isoformat(timespec="seconds")),
+                touch=False)
+    except Exception:
+        pass
+    return tok
+
+
+def consume_form_token(user, form_name, tok):
+    """Validate + burn a one-time form token. False = missing/expired/used."""
+    if not tok:
+        return False
+    try:
+        row = q("SELECT * FROM form_tokens WHERE token=? AND form_name=? AND business_id=?",
+                (tok, form_name, user["business_id"]), one=True)
+        if not row or (row["expires"] or "") < now_iso():
+            return False
+        exec_db("DELETE FROM form_tokens WHERE token=?", (tok,), touch=False)
+        return True
+    except Exception:
+        return False
+
+
+def form_token_input(user, form_name):
+    return f'<input type="hidden" name="form_token" value="{esc(new_form_token(user, form_name))}">'
+
+
+def ensure_default_account(b):
+    acc = q("SELECT * FROM accounts WHERE business_id=? AND is_active=1 ORDER BY id LIMIT 1", (b,), one=True)
+    if not acc:
+        exec_db("INSERT INTO accounts(business_id,name,type,opening_balance,is_active,created_at)"
+                " VALUES(?,?,?,?,?,?)", (b, "Cash", "Cash", 0, 1, now_iso()), touch=False)
+        acc = q("SELECT * FROM accounts WHERE business_id=? ORDER BY id LIMIT 1", (b,), one=True)
+    return acc
+
+
+def account_balance(b, acc_id):
+    """Current balance = opening + customer payments in + sale payments in
+    - supplier payments out - expenses out (only rows linked to account)."""
+    acc = q("SELECT * FROM accounts WHERE id=? AND business_id=?", (acc_id, b), one=True)
+    if not acc:
+        return 0.0
+    bal = acc["opening_balance"] or 0.0
+    inn = q("SELECT COALESCE(SUM(amount),0) FROM payments WHERE business_id=? AND account_id=?"
+            " AND entity_type IN ('customer','sale')", (b, acc_id), one=True)[0] or 0.0
+    out = q("SELECT COALESCE(SUM(amount),0) FROM payments WHERE business_id=? AND account_id=?"
+            " AND entity_type IN ('supplier','purchase')", (b, acc_id), one=True)[0] or 0.0
+    exp = q("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE business_id=? AND account_id=?",
+            (b, acc_id), one=True)[0] or 0.0
+    return bal + inn - out - exp
+
+
+def account_options(b, selected=None):
+    accs = q("SELECT * FROM accounts WHERE business_id=? AND is_active=1 ORDER BY name", (b,))
+    if not accs:
+        acc = ensure_default_account(b)
+        accs = [acc]
+    return "".join(f'<option value="{a["id"]}"{" selected" if str(selected) == str(a["id"]) else ""}>'
+                   f'{esc(a["name"])} ({esc(a["type"])})</option>' for a in accs)
 
 # ---------------------------------------------------------------- backup
 def _copy_db(path):
@@ -2938,12 +3275,12 @@ def form_start(action, csrf):
             f'<input type="hidden" name="csrf" value="{esc(csrf)}">')
 
 def field(label, name, value="", typ="text", req=False):
-    return (f'<p><label>{esc(label)}</label><br>'
+    return (f'<p><label>{esc(tr(label))}</label><br>'
             f'<input type="{typ}" name="{esc(name)}" value="{esc(value)}"'
             f'{" required" if req else ""}></p>')
 
 def table(headers, rows_html):
-    th = "".join(f"<th>{esc(h)}</th>" for h in headers)
+    th = "".join(f"<th>{esc(tr(h))}</th>" for h in headers)
     return f"<table><tr>{th}</tr>{rows_html}</table>"
 
 # ---------------------------------------------------------------- handler
@@ -3417,6 +3754,10 @@ class Handler(BaseHTTPRequestHandler):
                 if method == "GET":
                     return self.view_reports(user, biz, cur)
                 raise NotFound("Page not found")
+            if top == "accounts":
+                return self.view_accounts(user, biz, cur, parts, method)
+            if top == "admin":
+                return self.view_admin(user, biz, cur, parts, method)
             if top == "drive-save" and method == "POST":
                 return self.drive_save(user, biz)
             if top == "backup":
@@ -5187,16 +5528,17 @@ class Handler(BaseHTTPRequestHandler):
                 if r["stock"] <= r["low_stock"]:
                     return "stock-low"
                 return "stock-ok"
+            page_rows, pager, _off = paginate(rows, qs, "/products")
             rh = "".join(
-                f"<tr><td>{i + 1}</td><td><span style='display:inline-flex;gap:8px;align-items:center'><span class='tile-ic'>{icon('package', 18)}</span><a href='/products/{r['id']}'>{esc(r['name'])}</a></span></td>"
+                f"<tr><td>{_off + i + 1}</td><td><span style='display:inline-flex;gap:8px;align-items:center'><span class='tile-ic'>{icon('package', 18)}</span><a href='/products/{r['id']}'>{esc(r['name'])}</a></span></td>"
                 f"<td>{esc(r['sku'])}{('<br><small>' + esc(r['barcode']) + '</small>') if r['barcode'] and r['barcode'] != r['sku'] else ''}</td>"
                 f"<td>{esc(r['cat'])}</td><td class='pr'>{money(r['selling_price'], cur)}</td><td class='{_stock_cls(r)}'>{r['stock']}</td></tr>"
-                for i, r in enumerate(rows))
+                for i, r in enumerate(page_rows))
             pills = "".join(f'<a class="{"on" if stock_f == v else ""}" href="/products?stock={v}{("&amp;q=" + esc(qterm)) if qterm else ""}">{l}</a>'
                             for v, l in [("all", "All"), ("in", "In Stock"), ("low", "Low Stock"), ("out", "Out of Stock")])
             search = (f'<form method="get" action="/products"><input type="hidden" name="stock" value="{esc(stock_f)}"><div class="bd-search">{icon("search", 18)}<input type="text" name="q" placeholder="Search products…" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>'
                       f'<div class="bd-pills">{pills}</div>')
-            body = f'<div class="card">{search}{table(["#", "Product", "SKU-Barcode", "Category", "Price", "Stock"], rh)}</div>'
+            body = f'<div class="card">{search}{table(["#", "Product", "SKU-Barcode", "Category", "Price", "Stock"], rh)}{pager}</div>'
             if user["role"] in ("owner", "admin"):
                 body += '<div class="card noprint"><a class="btn btn-block" href="/products/new">+ New Product</a></div>'
             return self.send_html(200, page(user, biz, "Products", body))
@@ -5219,6 +5561,7 @@ class Handler(BaseHTTPRequestHandler):
                          self.fv(form, "location").strip() or "Main",
                          int(self.fv(form, "stock") or 0),
                          int(self.fv(form, "low_stock") or 5), now_iso(), self.fv(form, "brand").strip()))
+                audit(user, "create", "product", "", f"Product {self.fv(form, 'name').strip()}")
                 return self.redirect("/products")
             self.require_role(user, "owner", "admin")
             cats = q("SELECT id, name FROM categories WHERE business_id=? ORDER BY name", (b,))
@@ -5247,6 +5590,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.check_csrf(user, form)
                 if self.fv(form, "action") == "delete":
                     exec_db("DELETE FROM products WHERE id=?", (prod["id"],))
+                    audit(user, "delete", "product", prod["id"], f"Deleted {prod['name']}")
                     return self.redirect("/products")
                 old_price = prod["selling_price"]
                 new_price = float(self.fv(form, "selling_price") or 0)
@@ -5262,6 +5606,7 @@ class Handler(BaseHTTPRequestHandler):
                 if old_price != new_price:
                     exec_db("INSERT INTO price_history(business_id,product_id,old_price,new_price,changed_at,note) VALUES(?,?,?,?,?,?)",
                             (b, prod["id"], old_price, new_price, now_iso(), "Edited on product page"))
+                audit(user, "update", "product", prod["id"], f"Edited {prod['name']}")
                 return self.redirect("/products")
             moves = q("SELECT * FROM stock_movements WHERE business_id=? AND product_id=? ORDER BY id DESC LIMIT 20", (b, prod["id"]))
             mh = "".join(f"<tr><td>{esc(m['move_date'])}</td><td>{esc(m['kind'])}</td><td>{m['qty']}</td><td>{esc(m['note'])}</td></tr>" for m in moves)
@@ -5323,6 +5668,7 @@ class Handler(BaseHTTPRequestHandler):
             exec_db("UPDATE products SET stock=stock+? WHERE id=?", (delta, prod["id"]))
             exec_db("INSERT INTO stock_movements(business_id,product_id,kind,qty,note,move_date,created_at) VALUES(?,?,?,?,?,?,?)",
                     (b, prod["id"], kind, qty, self.fv(form, "note").strip(), today(), now_iso()))
+            audit(user, "adjust", "stock", prod["id"], f"{kind} {qty:g} {prod['name']}")
             return self.redirect("/inventory")
         rows = q("SELECT * FROM products WHERE business_id=? ORDER BY name", (b,))
         qs = parse_qs(urlparse(self.path).query)
@@ -5353,10 +5699,11 @@ class Handler(BaseHTTPRequestHandler):
             if r["stock"] <= r["low_stock"]:
                 return "stock-low"
             return "stock-ok"
+        page_inv, pager, _off = paginate(inv, qs, "/inventory")
         rh = "".join(
-            f"<tr><td>{i + 1}</td><td><span style='display:inline-flex;gap:8px;align-items:center'><span class='tile-ic'>{icon('package', 18)}</span><a href='/products/{r['id']}'>{esc(r['name'])}</a></span></td>"
+            f"<tr><td>{_off + i + 1}</td><td><span style='display:inline-flex;gap:8px;align-items:center'><span class='tile-ic'>{icon('package', 18)}</span><a href='/products/{r['id']}'>{esc(r['name'])}</a></span></td>"
             f"<td>{o:g}</td><td>{inn:g}</td><td>{out:g}</td><td class='{_inv_cls(r)}'>{r['stock']:g}</td><td class='pr'>{money(r['stock'] * r['purchase_price'], cur)}</td></tr>"
-            for i, (r, o, inn, out) in enumerate(inv))
+            for i, (r, o, inn, out) in enumerate(page_inv))
         total_products = len(rows)
         total_stock = sum(r["stock"] for r in rows)
         stock_value = sum(r["stock"] * r["purchase_price"] for r in rows)
@@ -5371,14 +5718,15 @@ class Handler(BaseHTTPRequestHandler):
                    f'<div class="v23-tile"><div class="lbl">Total Stock</div><div class="val">{total_stock:g}</div></div>'
                    f'<div class="v23-tile"><div class="lbl">Stock Value</div><div class="val">{money(stock_value, cur)}</div></div></div>'
                    f'<p><span class="pill low">Low Stock: {low_n}</span> <span class="pill due">Out of Stock: {out_n}</span></p></div>')
-        body = (f'<div class="card"><h3>Inventory</h3>{search}' + table(["#", "Product", "Opening", "In", "Out", "Current", "Value"], rh)
+        body = (f'<div class="card"><h3>Inventory</h3>{search}' + table(["#", "Product", "Opening", "In", "Out", "Current", "Value"], rh) + pager
                 + '<p style="color:#64748b;font-size:12px">Opening = Current &minus; In + Out, derived from recorded purchases, sales and manual stock movements.</p></div>'
                 + summary)
         if user["role"] in ("owner", "admin"):
             body += '<div class="card noprint"><a class="btn btn-block" href="/products/new">+ Add Product</a></div>'
         moves = q("""SELECT m.*, p.name AS pname FROM stock_movements m JOIN products p ON p.id=m.product_id
-                     WHERE m.business_id=? ORDER BY m.id DESC LIMIT 30""", (b,))
-        mh = "".join(f"<tr><td>{esc(m['move_date'])}</td><td>{esc(m['pname'])}</td><td>{esc(m['kind'])}</td><td>{m['qty']}</td></tr>" for m in moves)
+                     WHERE m.business_id=? ORDER BY m.id DESC""", (b,))
+        page_moves, pager2, _ = paginate(moves, qs, "/inventory")
+        mh = "".join(f"<tr><td>{esc(m['move_date'])}</td><td>{esc(m['pname'])}</td><td>{esc(m['kind'])}</td><td>{m['qty']}</td></tr>" for m in page_moves)
         opts = "".join(f'<option value="{r["id"]}">{esc(r["name"])} (stock {r["stock"]})</option>' for r in rows)
         if user["role"] in ("owner", "admin"):
             body += ('<div class="card"><h3>Stock in / out</h3>' + form_start("/inventory", user["_csrf"])
@@ -5386,7 +5734,7 @@ class Handler(BaseHTTPRequestHandler):
                      + '<p><label>Direction</label><br><select name="kind"><option value="in">In</option><option value="out">Out</option></select></p>'
                      + field("Quantity", "qty", "", "number", True) + field("Note", "note")
                      + '<button type="submit">Record movement</button></form></div>')
-        body += '<div class="card"><h3>Recent movements</h3>' + (table(["Date", "Product", "Kind", "Qty"], mh) if moves else "<p>None yet.</p>") + '</div>'
+        body += '<div class="card"><h3>Recent movements</h3>' + (table(["Date", "Product", "Kind", "Qty"], mh) + pager2 if moves else "<p>None yet.</p>") + '</div>'
         transfers = q("SELECT t.*, p.name AS pname FROM stock_transfers t JOIN products p ON p.id=t.product_id WHERE t.business_id=? ORDER BY t.id DESC LIMIT 20", (b,))
         th = "".join(f"<tr><td>{esc(t['move_date'])}</td><td>{esc(t['pname'])}</td><td>{esc(t['from_loc'])} &rarr; {esc(t['to_loc'])}</td><td>{t['qty']}</td></tr>" for t in transfers)
         body += '<div class="card"><h3>Stock transfers</h3>' + (table(["Date", "Product", "From &rarr; To", "Qty"], th) if transfers else "<p>No transfers yet.</p>") + '</div>'
@@ -5406,8 +5754,9 @@ class Handler(BaseHTTPRequestHandler):
         rows = q(f"SELECT * FROM {table_name} WHERE business_id=? ORDER BY name", (b,))
         if qterm:
             rows = [r for r in rows if qterm in r["name"].lower() or qterm in (r["phone"] or "").lower()]
+        page_rows, pager, _ = paginate(rows, qs, f"/{kind}s")
         rh = ""
-        for r in rows:
+        for r in page_rows:
             due = customer_due(b, r["id"]) if kind == "customer" else supplier_due(b, r["id"])
             initials = "".join(w[0] for w in r["name"].split()[:2]).upper() if r["name"] else "?"
             tint = " blue" if kind == "supplier" else ""
@@ -5415,7 +5764,7 @@ class Handler(BaseHTTPRequestHandler):
             rh += (f"<tr><td><span style='display:inline-flex;gap:8px;align-items:center'><span class='tile-ic{tint}'>{esc(initials)}</span><a href='/{kind}s/{r['id']}'>{esc(r['name'])}</a></span></td>"
                    f"<td>{esc(r['phone'])}</td><td class='{due_cls}'>{money(due, cur)}</td></tr>")
         search = (f'<form method="get" action="/{kind}s"><div class="bd-search">{icon("search", 18)}<input type="text" name="q" placeholder="Search {kind}s…" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>')
-        body = f'<div class="card">{search}' + table(["Name", "Phone", "Due"], rh) + '</div>'
+        body = f'<div class="card">{search}' + table(["Name", "Phone", "Due"], rh) + pager + '</div>'
         if user["role"] in ("owner", "admin"):
             body += f'<div class="card noprint"><a class="btn btn-block" href="/{kind}s/new">{esc(new_label)}</a></div>'
         return self.send_html(200, page(user, biz, title, body))
@@ -5600,6 +5949,12 @@ class Handler(BaseHTTPRequestHandler):
                 for r in rows:
                     w.writerow([r["invoice_no"], r["cname"] or "Walk-in", r["sale_date"], r["total"], r["paid"], r["due"]])
                 return self.send_file(out.getvalue().encode("utf-8-sig"), "sales.csv", "text/csv")
+            if qs.get("export") == ["xlsx"]:
+                rows = q("""SELECT s.*, c.name AS cname FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
+                            WHERE s.business_id=? ORDER BY s.id DESC""", (b,))
+                return _xlsx_send(self, "Sales", ["invoice", "customer", "date", "total", "paid", "due"],
+                    [[r["invoice_no"], r["cname"] or "Walk-in", r["sale_date"], r["total"], r["paid"], r["due"]] for r in rows],
+                    "sales.xlsx")
             rows = q("""SELECT s.*, c.name AS cname FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
                         WHERE s.business_id=? ORDER BY s.id DESC""", (b,))
             if qterm:
@@ -5618,15 +5973,16 @@ class Handler(BaseHTTPRequestHandler):
                 if r["paid"] > 0:
                     return '<span class="pill partial">Partial</span>'
                 return '<span class="pill due">Due</span>'
+            page_rows, pager, _ = paginate(rows, qs, "/sales")
             rh = "".join(f"<tr><td><a href='/sales/{r['id']}'>{esc(r['invoice_no'])}</a></td><td>{esc(r['cname'] or 'Walk-in')}</td>"
-                         f"<td>{esc(r['sale_date'])}</td><td class='pr'>{money(r['total'], cur)}</td><td>{money(r['due'], cur)}</td><td>{_status(r)}</td></tr>" for r in rows)
+                         f"<td>{esc(r['sale_date'])}</td><td class='pr'>{money(r['total'], cur)}</td><td>{money(r['due'], cur)}</td><td>{_status(r)}</td></tr>" for r in page_rows)
             _extra = ("&amp;q=" + esc(qterm) if qterm else "") + ("&amp;from=" + esc(frm) if frm else "") + ("&amp;to=" + esc(to) if to else "")
             pills = "".join(f'<a class="{"on" if status == v else ""}" href="/sales?status={v}{_extra}">{l}</a>'
                             for v, l in [("all", "All"), ("paid", "Paid"), ("due", "Due")])
             filt = (f'<div class="card"><form method="get" action="/sales"><input type="hidden" name="status" value="{esc(status)}"><div class="bd-search">{icon("search", 18)}<input type="search" name="q" placeholder="Search invoice/customer" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div>'
                     f'<p>From <input type="date" name="from" value="{esc(frm)}"> To <input type="date" name="to" value="{esc(to)}"> <button type="submit" class="btn secondary">Filter</button></p></form>'
-                    f'<div class="bd-pills">{pills}</div><p><a class="btn secondary" href="/sales?export=csv">Export CSV</a></p></div>')
-            body = filt + '<div class="card">' + table(["Invoice", "Customer", "Date", "Total", "Due", "Status"], rh) + '</div>'
+                    f'<div class="bd-pills">{pills}</div><p><a class="btn secondary" href="/sales?export=csv">Export CSV</a> <a class="btn secondary" href="/sales?export=xlsx">Export Excel</a></p></div>')
+            body = filt + '<div class="card">' + table(["Invoice", "Customer", "Date", "Total", "Due", "Status"], rh) + pager + '</div>'
             if user["role"] in ("owner", "admin"):
                 body += '<div class="card noprint"><a class="btn btn-block" href="/sales/new">+ New Sale</a></div>'
             return self.send_html(200, page(user, biz, "Sales", body))
@@ -5634,6 +5990,9 @@ class Handler(BaseHTTPRequestHandler):
             if method == "POST":
                 form = self.form()
                 self.check_csrf(user, form)
+                if not consume_form_token(user, "sale", self.fv(form, "form_token")):
+                    return self.send_html(200, page(user, biz, "New Sale",
+                        '<div class="card err">This sale was already submitted (duplicate blocked). Check the sales list.</div>'))
                 items, err = self._lines_form(form, user)
                 if err:
                     return self.send_html(200, page(user, biz, "New Sale", f'<div class="card err">{esc(err)}</div>'))
@@ -5659,6 +6018,7 @@ class Handler(BaseHTTPRequestHandler):
                     exec_db("UPDATE products SET stock=stock-? WHERE id=?", (qty, prod["id"]))
                     exec_db("INSERT INTO stock_movements(business_id,product_id,kind,qty,note,move_date,created_at) VALUES(?,?,?,?,?,?,?)",
                             (b, prod["id"], "sale", qty, f"Sale #{sale_id}", today(), now_iso()))
+                audit(user, "create", "sale", sale_id, f"Invoice {next_invoice_no(b)} total={total:.2f} paid={paid:.2f}")
                 return self.redirect(f"/sales/{sale_id}")
             products = q("SELECT * FROM products WHERE business_id=? ORDER BY name", (b,))
             custs = q("SELECT id, name FROM customers WHERE business_id=? ORDER BY name", (b,))
@@ -5666,6 +6026,7 @@ class Handler(BaseHTTPRequestHandler):
             row, js = self._line_picker(products, cur, with_discount=True)
             pm_opts = "".join(f'<option value="{m}">{esc(m)}</option>' for m in payment_methods_setting())
             body = ('<div class="card">' + form_start("/sales/new", user["_csrf"])
+                    + form_token_input(user, "sale")
                     + f'<p><label>Customer</label><br><select name="customer_id">{copts}</select> <a class="btn secondary" href="/customers/new">+ New customer</a></p>'
                     + field("Salesperson", "salesperson") + field("Sale date", "sale_date", today(), "date")
                     + f'<p>Auto invoice number: <b>{esc(next_invoice_no(b))}</b></p>'
@@ -5728,6 +6089,7 @@ class Handler(BaseHTTPRequestHandler):
                             (b, ret_id, item["id"], item["product_id"], rqty, self.fv(form, "reason").strip(), reduction))
                     _restore(item, rqty, f"Sale #{sale_id} return")
                     exec_db("UPDATE sales SET total=?, due=? WHERE id=?", (new_total, new_due, sale_id))
+                    audit(user, "return", "sale", sale_id, f"Sales return, new total={new_total:.2f}")
                     return self.redirect(f"/sales/{sale_id}")
                 if action == "cancel":
                     reduction = 0.0
@@ -5750,6 +6112,7 @@ class Handler(BaseHTTPRequestHandler):
                     if ret_id is not None:
                         exec_db("UPDATE sales_returns SET total=?, refund=? WHERE id=?", (reduction, refund, ret_id))
                     exec_db("UPDATE sales SET total=?, due=?, status='cancelled' WHERE id=?", (new_total, new_due, sale_id))
+                    audit(user, "cancel", "sale", sale_id, "Sale cancelled/voided")
                     return self.redirect(f"/sales/{sale_id}")
                 raise NotFound("Unknown sale action")
             return self.invoice_view(user, biz, cur, sale_id)
@@ -5825,6 +6188,12 @@ class Handler(BaseHTTPRequestHandler):
                 for r in rows:
                     w.writerow([r["invoice_no"], r["cname"] or "Walk-in", r["sale_date"], r["total"], r["paid"], r["due"]])
                 return self.send_file(out.getvalue().encode("utf-8-sig"), "invoices.csv", "text/csv")
+            if qs.get("export") == ["xlsx"]:
+                rows = q("""SELECT s.*, c.name AS cname FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
+                            WHERE s.business_id=? ORDER BY s.id DESC""", (b,))
+                return _xlsx_send(self, "Invoices", ["invoice", "customer", "date", "total", "paid", "due"],
+                    [[r["invoice_no"], r["cname"] or "Walk-in", r["sale_date"], r["total"], r["paid"], r["due"]] for r in rows],
+                    "invoices.xlsx")
             rows = q("""SELECT s.*, c.name AS cname FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
                         WHERE s.business_id=? ORDER BY s.id DESC""", (b,))
             if qterm:
@@ -5852,7 +6221,7 @@ class Handler(BaseHTTPRequestHandler):
             pills = "".join(f'<a class="{"on" if status == v else ""}" href="/invoices?status={v}{("&amp;q=" + esc(qterm)) if qterm else ""}">{l}</a>'
                             for v, l in [("all", "All"), ("paid", "Paid"), ("due", "Due")])
             filt = (f'<div class="card"><form method="get" action="/invoices"><input type="hidden" name="status" value="{esc(status)}"><div class="bd-search">{icon("search", 18)}<input type="search" name="q" placeholder="Search invoice/customer" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>'
-                    f'<div class="bd-pills">{pills}</div><p><a class="btn secondary" href="/invoices?export=csv">Export CSV</a></p></div>')
+                    f'<div class="bd-pills">{pills}</div><p><a class="btn secondary" href="/invoices?export=csv">Export CSV</a> <a class="btn secondary" href="/invoices?export=xlsx">Export Excel</a></p></div>')
             return self.send_html(200, page(user, biz, "Invoices", filt + '<div class="card"><h3>Invoices</h3>' + (rh if rows else "<p>No invoices yet.</p>") + '</div>'))
         raise NotFound("Invoice page not found")
 
@@ -5872,11 +6241,12 @@ class Handler(BaseHTTPRequestHandler):
                 if r["paid"] > 0:
                     return '<span class="pill partial">Partial</span>'
                 return '<span class="pill due">Due</span>'
+            page_rows, pager, _ = paginate(rows, qs, "/purchases")
             rh = "".join(f"<tr><td><a href='/purchases/{r['id']}'>PUR-{r['id']:04d}</a></td><td>{esc(r['sname'] or '-')}</td><td>{esc(r['purchase_date'])}</td>"
-                         f"<td class='pr'>{money(r['total'], cur)}</td><td>{money(r['due'], cur)}</td><td>{_pstatus(r)}</td></tr>" for r in rows)
+                         f"<td class='pr'>{money(r['total'], cur)}</td><td>{money(r['due'], cur)}</td><td>{_pstatus(r)}</td></tr>" for r in page_rows)
             search = (f'<form method="get" action="/purchases"><div class="bd-search">{icon("search", 18)}<input type="text" name="q" placeholder="Search purchase…" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>')
             body = (f'<div class="card"><h3>Total Purchase</h3><p style="font-size:20px;font-weight:900;color:#16a34a">{money(total_pur, cur)}</p>{search}'
-                    + table(["Purchase", "Supplier", "Date", "Total", "Due", "Status"], rh) + '</div>')
+                    + table(["Purchase", "Supplier", "Date", "Total", "Due", "Status"], rh) + pager + '</div>')
             if user["role"] in ("owner", "admin"):
                 body += '<div class="card noprint"><a class="btn btn-block" href="/purchases/new">+ New Purchase</a></div>'
             return self.send_html(200, page(user, biz, "Purchases", body))
@@ -5980,6 +6350,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.require_role(user, "owner", "admin")
                 form = self.form()
                 self.check_csrf(user, form)
+                if not consume_form_token(user, "purchase", self.fv(form, "form_token")):
+                    return self.send_html(200, page(user, biz, "New Purchase",
+                        '<div class="card err">This purchase was already submitted (duplicate blocked). Check the purchase list.</div>'))
                 items, err = self._lines_form(form, user)
                 if err:
                     return self.send_html(200, page(user, biz, "New Purchase", f'<div class="card err">{esc(err)}</div>'))
@@ -5998,6 +6371,7 @@ class Handler(BaseHTTPRequestHandler):
                     exec_db("UPDATE products SET stock=stock+? WHERE id=?", (qty, prod["id"]))
                     exec_db("INSERT INTO stock_movements(business_id,product_id,kind,qty,note,move_date,created_at) VALUES(?,?,?,?,?,?,?)",
                             (b, prod["id"], "purchase", qty, f"Purchase #{pur_id}", today(), now_iso()))
+                audit(user, "create", "purchase", pur_id, f"PUR-{pur_id:04d} total={total:.2f} paid={paid:.2f}")
                 return self.redirect("/purchases")
             self.require_role(user, "owner", "admin")
             products = q("SELECT * FROM products WHERE business_id=? ORDER BY name", (b,))
@@ -6005,6 +6379,7 @@ class Handler(BaseHTTPRequestHandler):
             sopts = '<option value="">-</option>' + "".join(f'<option value="{s["id"]}">{esc(s["name"])}</option>' for s in sups)
             row, js = self._line_picker(products, cur, with_discount=True)
             body = ('<div class="card">' + form_start("/purchases/new", user["_csrf"])
+                    + form_token_input(user, "purchase")
                     + f'<p><label>Supplier</label><br><select name="supplier_id">{sopts}</select></p>'
                     + '<div id="lines">' + row + '</div>'
                     + '<p><button type="button" onclick="addLine()">+ Add line</button></p>'
@@ -6013,12 +6388,126 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_html(200, page(user, biz, "New Purchase", body, extra=js))
         raise NotFound("Purchase page not found")
 
+    def view_admin(self, user, biz, cur, parts, method):
+        """Phase 2: Admin Panel - role/permission matrix + user-role assignment.
+        Owner/admin only."""
+        self.require_role(user, "owner", "admin")
+        b = user["business_id"]
+        ACTIONS = ["create_sale", "create_product", "edit_product", "delete_product",
+                   "create_purchase", "record_payment", "create_expense", "adjust_stock",
+                   "view_reports", "export_data", "manage_users", "manage_settings"]
+        ROLES = ["owner", "admin", "manager", "cashier", "staff"]
+        if method == "POST":
+            form = self.form()
+            self.check_csrf(user, form)
+            if self.fv(form, "op") == "matrix":
+                m = {}
+                for a in ACTIONS:
+                    m[a] = {"staff": bool(self.fv(form, f"perm_{a}_staff"))}
+                set_setting("perm_matrix", json.dumps(m))
+                audit(user, "update", "settings", "", "Permission matrix updated")
+                return self.redirect("/admin")
+            if self.fv(form, "op") == "role":
+                uid = int(self.fv(form, "user_id"))
+                new_role = self.fv(form, "role")
+                if new_role not in ROLES:
+                    raise Forbidden("Unknown role.")
+                target = q("SELECT * FROM users WHERE id=? AND business_id=?", (uid, b), one=True)
+                if not target:
+                    raise NotFound("User not found")
+                if target["id"] == user["id"]:
+                    return self.send_html(200, page(user, biz, "Admin Panel",
+                        '<div class="card err">You cannot change your own role.</div>'
+                        '<p><a class="btn" href="/admin">Back</a></p>'))
+                exec_db("UPDATE users SET role=? WHERE id=?", (new_role, uid))
+                audit(user, "update", "user", uid, f"Role -> {new_role} ({target['email']})")
+                return self.redirect("/admin")
+        m = perm_matrix()
+        # matrix table: owner/admin always full; checkbox toggles staff
+        mh = ""
+        for a in ACTIONS:
+            allow_staff = bool((m.get(a) or {}).get("staff"))
+            mh += (f"<tr><td>{esc(a.replace('_', ' ').title())}</td>"
+                   f"<td style='text-align:center'>&#10003;</td>"
+                   f"<td style='text-align:center'>&#10003;</td>"
+                   f"<td style='text-align:center'><input type='checkbox' name='perm_{a}_staff' value='1'{' checked' if allow_staff else ''}></td></tr>")
+        users = q("SELECT id, email, name, role, created_at FROM users WHERE business_id=? ORDER BY id", (b,))
+        uh = ""
+        for u in users:
+            opts = "".join(f'<option value="{r}"{" selected" if u["role"] == r else ""}>{r.title()}</option>' for r in ROLES)
+            uh += (f"<tr><td>{esc(u['email'])}</td><td>{esc(u['name'] or '-')}</td><td>{esc(u['role'])}</td>"
+                   f"<td><form method='post' action='/admin' style='display:flex;gap:6px'>"
+                   f"<input type='hidden' name='csrf' value='{esc(user['_csrf'])}'>"
+                   f"<input type='hidden' name='op' value='role'><input type='hidden' name='user_id' value='{u['id']}'>"
+                   f"<select name='role'>{opts}</select><button type='submit' class='btn secondary'>Set</button></form></td></tr>")
+        body = ('<div class="card"><h3>Role / Permission Matrix</h3>'
+                '<p>Owner and Admin can do everything. Tick which actions <b>Staff</b> (manager/cashier/staff roles) may additionally do. '
+                'Defaults: staff may create sales and view reports.</p>'
+                '<form method="post" action="/admin">'
+                f"<input type='hidden' name='csrf' value='{esc(user['_csrf'])}'>"
+                "<input type='hidden' name='op' value='matrix'>"
+                + table(["Action", "Owner", "Admin", "Staff (tick to allow)"],
+                        "<tr><td colspan='4' style='color:#64748b'>&#10003; = always allowed for Owner/Admin.</td></tr>" + mh)
+                + '<p><button type="submit">Save matrix</button></p></form></div>'
+                '<div class="card"><h3>Users</h3>'
+                + table(["Email", "Name", "Role", "Change role"], uh) + '</div>')
+        return self.send_html(200, page(user, biz, "Admin Panel", body))
+
+    def view_accounts(self, user, biz, cur, parts, method):
+        """Phase 2: cash/bank/mobile accounts with opening balances."""
+        b = user["business_id"]
+        ensure_default_account(b)
+        if method == "POST":
+            self.require_role(user, "owner", "admin")
+            form = self.form()
+            self.check_csrf(user, form)
+            name = self.fv(form, "name").strip()
+            if not name:
+                return self.send_html(200, page(user, biz, "Accounts",
+                    '<div class="card err">Account name is required.</div>'))
+            if self.fv(form, "action") == "deactivate":
+                exec_db("UPDATE accounts SET is_active=0 WHERE id=? AND business_id=?",
+                        (int(self.fv(form, "id")), b))
+                audit(user, "update", "account", self.fv(form, "id"), "Account deactivated")
+            elif self.fv(form, "id"):
+                exec_db("UPDATE accounts SET name=?, type=?, opening_balance=? WHERE id=? AND business_id=?",
+                        (name, self.fv(form, "type"), float(self.fv(form, "opening_balance") or 0),
+                         int(self.fv(form, "id")), b))
+                audit(user, "update", "account", self.fv(form, "id"), f"Account {name} updated")
+            else:
+                aid = exec_db("INSERT INTO accounts(business_id,name,type,opening_balance,is_active,created_at)"
+                              " VALUES(?,?,?,?,?,?)",
+                              (b, name, self.fv(form, "type"), float(self.fv(form, "opening_balance") or 0),
+                               1, now_iso()))
+                audit(user, "create", "account", aid, f"Account {name} opened")
+            return self.redirect("/accounts")
+        accs = q("SELECT * FROM accounts WHERE business_id=? ORDER BY is_active DESC, name", (b,))
+        rh = ""
+        for a in accs:
+            bal = account_balance(b, a["id"])
+            rh += (f"<tr><td>{esc(a['name'])}</td><td>{esc(a['type'])}</td>"
+                   f"<td class='pr'>{money(a['opening_balance'], cur)}</td>"
+                   f"<td class='pr'><b>{money(bal, cur)}</b></td>"
+                   f"<td>{'Active' if a['is_active'] else 'Inactive'}</td></tr>")
+        body = ('<div class="card"><h3>Cash / Bank Accounts</h3><p>Opening balance + linked payments and expenses = current balance.</p>'
+                + table(["Account", "Type", "Opening", "Current Balance", "Status"], rh) + '</div>')
+        if user["role"] in ("owner", "admin"):
+            body += ('<div class="card"><h3>New account</h3>' + form_start("/accounts", user["_csrf"])
+                     + field("Account name", "name", "", "text", True)
+                     + '<p><label>Type</label><br><select name="type"><option>Cash</option><option>Bank</option><option>Mobile</option></select></p>'
+                     + field("Opening balance", "opening_balance", "0", "number")
+                     + '<button type="submit">Save account</button></form></div>')
+        return self.send_html(200, page(user, biz, "Accounts", body))
+
     def view_payments(self, user, biz, cur, parts, method):
         b = user["business_id"]
         if method == "POST":
             self.require_role(user, "owner", "admin")
             form = self.form()
             self.check_csrf(user, form)
+            if not consume_form_token(user, "payment", self.fv(form, "form_token")):
+                return self.send_html(200, page(user, biz, "Payments",
+                    '<div class="card err">This payment was already recorded (duplicate blocked). Check the payment list.</div>'))
             etype = self.fv(form, "entity_type")
             eid = int(self.fv(form, "customer_id") if etype == "customer" else self.fv(form, "supplier_id") or 0)
             if etype == "customer":
@@ -6028,17 +6517,22 @@ class Handler(BaseHTTPRequestHandler):
             amount = float(self.fv(form, "amount") or 0)
             if amount <= 0:
                 return self.send_html(200, page(user, biz, "Payments", '<div class="card err">Amount must be positive.</div>'))
-            exec_db("""INSERT INTO payments(business_id,entity_type,entity_id,amount,method,note,pay_date,created_at)
-                       VALUES(?,?,?,?,?,?,?,?)""",
-                    (b, etype, eid, amount, self.fv(form, "method").strip(), self.fv(form, "note").strip(), today(), now_iso()))
+            _acc = self.fv(form, "account_id")
+            _acc_id = int(_acc) if _acc else None
+            exec_db("""INSERT INTO payments(business_id,entity_type,entity_id,amount,method,note,pay_date,created_at,account_id)
+                       VALUES(?,?,?,?,?,?,?,?,?)""",
+                    (b, etype, eid, amount, self.fv(form, "method").strip(), self.fv(form, "note").strip(), today(), now_iso(), _acc_id))
             if etype == "customer":
                 apply_customer_payment(b, eid, amount)
             else:
                 apply_supplier_payment(b, eid, amount)
+            audit(user, "payment", "payment", eid, f"{etype} payment {amount:.2f} via {self.fv(form, 'method').strip()}")
             return self.redirect("/payments")
         rows = q("SELECT * FROM payments WHERE business_id=? ORDER BY id DESC", (b,))
+        qs = parse_qs(urlparse(self.path).query)
+        page_rows, pager, _ = paginate(rows, qs, "/payments")
         rh = ""
-        for r in rows:
+        for r in page_rows:
             if r["entity_type"] == "customer":
                 nm = q("SELECT name FROM customers WHERE id=?", (r["entity_id"],), one=True)
             else:
@@ -6049,14 +6543,16 @@ class Handler(BaseHTTPRequestHandler):
         sups = q("SELECT id, name FROM suppliers WHERE business_id=? ORDER BY name", (b,))
         copts = "".join(f'<option value="{c["id"]}">{esc(c["name"])}</option>' for c in custs)
         sopts = "".join(f'<option value="{s["id"]}">{esc(s["name"])}</option>' for s in sups)
-        body = ('<div class="card">' + table(["Date", "Type", "Party", "Amount", "Method"], rh) + '</div>')
+        body = ('<div class="card">' + table(["Date", "Type", "Party", "Amount", "Method"], rh) + pager + '</div>')
         if user["role"] in ("owner", "admin"):
             body += ('<div class="card"><h3>Record payment (reduces outstanding due)</h3>'
                      + form_start("/payments", user["_csrf"])
+                     + form_token_input(user, "payment")
                      + '<p><label>Type</label><br><select name="entity_type"><option value="customer">Customer (received)</option><option value="supplier">Supplier (paid)</option></select></p>'
                      + f'<p><label>Customer</label><br><select name="customer_id">{copts}</select></p>'
                      + f'<p><label>Supplier</label><br><select name="supplier_id">{sopts}</select></p>'
                      + field("Amount", "amount", "", "number", True) + field("Method (cash/bKash/bank)", "method")
+                     + f'<p><label>Account</label><br><select name="account_id">{account_options(b)}</select></p>'
                      + field("Note", "note") + '<button type="submit">Record payment</button></form></div>')
         return self.send_html(200, page(user, biz, "Payments", body))
 
@@ -6066,11 +6562,17 @@ class Handler(BaseHTTPRequestHandler):
             self.require_role(user, "owner", "admin")
             form = self.form()
             self.check_csrf(user, form)
-            exec_db("""INSERT INTO expenses(business_id,title,category,amount,method,expense_date,note,created_at,created_by,reference)
-                       VALUES(?,?,?,?,?,?,?,?,?,?)""",
+            if not consume_form_token(user, "expense", self.fv(form, "form_token")):
+                return self.send_html(200, page(user, biz, "Expenses",
+                    '<div class="card err">This expense was already saved (duplicate blocked). Check the expense list.</div>'))
+            _eacc = self.fv(form, "account_id")
+            _eacc_id = int(_eacc) if _eacc else None
+            exec_db("""INSERT INTO expenses(business_id,title,category,amount,method,expense_date,note,created_at,created_by,reference,account_id)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                     (b, self.fv(form, "title").strip(), self.fv(form, "category").strip(),
                      float(self.fv(form, "amount") or 0), self.fv(form, "method").strip(), today(),
-                     self.fv(form, "note").strip(), now_iso(), user["email"], self.fv(form, "reference").strip()))
+                     self.fv(form, "note").strip(), now_iso(), user["email"], self.fv(form, "reference").strip(), _eacc_id))
+            audit(user, "create", "expense", "", f"{self.fv(form, 'title').strip()} {self.fv(form, 'amount')} ({self.fv(form, 'category').strip()})")
             return self.redirect("/expenses")
         qs = parse_qs(urlparse(self.path).query)
         qterm = qs.get("q", [""])[0].strip().lower()
@@ -6081,8 +6583,9 @@ class Handler(BaseHTTPRequestHandler):
             rows = [r for r in rows if qterm in r["title"].lower() or qterm in (r["category"] or "").lower()]
         if cat_f != "all":
             rows = [r for r in rows if (r["category"] or "") == cat_f]
+        page_rows, pager, _ = paginate(rows, qs, "/expenses")
         rh = ""
-        for r in rows:
+        for r in page_rows:
             _ref = r["reference"] if "reference" in r.keys() else ""
             _by = r["created_by"] if "created_by" in r.keys() else ""
             if _ref and _by:
@@ -6098,12 +6601,14 @@ class Handler(BaseHTTPRequestHandler):
                         for v, l in [("all", "All")] + [(c, c) for c in cats])
         search = (f'<form method="get" action="/expenses"><input type="hidden" name="cat" value="{esc(cat_f)}"><div class="bd-search">{icon("search", 18)}<input type="text" name="q" placeholder="Search expenses…" value="{esc(qterm)}"><button type="submit" class="btn secondary">Search</button></div></form>'
                   f'<div class="bd-pills">{pills}</div>')
-        body = f'<div class="card">{search}' + table(["Expense", "Category", "Date", "Amount"], rh) + '</div>'
+        body = f'<div class="card">{search}' + table(["Expense", "Category", "Date", "Amount"], rh) + pager + '</div>'
         if user["role"] in ("owner", "admin"):
             body += '<div class="card noprint"><a class="btn btn-block" href="#new-expense">+ Add Expense</a></div>'
             body += ('<div class="card" id="new-expense"><h3>New expense</h3>' + form_start("/expenses", user["_csrf"])
+                     + form_token_input(user, "expense")
                      + field("Title", "title", "", "text", True) + field("Category (Rent/Salary/Transport/Utility/Others)", "category")
                      + field("Amount", "amount", "", "number", True) + field("Method", "method") + field("Reference", "reference") + field("Note", "note")
+                     + f'<p><label>Account</label><br><select name="account_id">{account_options(b)}</select></p>'
                      + '<button type="submit">Save expense</button></form></div>')
         return self.send_html(200, page(user, biz, "Expenses", body))
 
@@ -6591,8 +7096,151 @@ class Handler(BaseHTTPRequestHandler):
                 + '<button type="submit">Mark all as read</button></form></p></div>')
         return self.send_html(200, page(user, biz, "Notifications", body))
 
+    def _validate_import_rows(self, b, kind, rows):
+        """Phase 2: validate parsed CSV rows. Returns list of
+        (row, status, problems) where status is 'ok'/'warn'/'err'."""
+        out = []
+        seen_sku, seen_bar, seen_imei = set(), set(), set()
+        for r in rows:
+            probs = []
+            status = "ok"
+            if kind == "products":
+                name = r[0].strip() if len(r) > 0 else ""
+                if not name or name.lower() == "name":
+                    continue  # header / blank
+                sku = r[1].strip() if len(r) > 1 else ""
+                barcode = r[2].strip() if len(r) > 2 else ""
+                for idx, lbl in ((3, "purchase_price"), (4, "selling_price")):
+                    if len(r) > idx and r[idx].strip():
+                        try:
+                            v = float(r[idx])
+                            if v < 0:
+                                probs.append(f"{lbl} negative")
+                        except Exception:
+                            probs.append(f"{lbl} not a number")
+                if len(r) > 5 and r[5].strip():
+                    try:
+                        v = int(float(r[5]))
+                        if v < 0:
+                            probs.append("stock negative")
+                    except Exception:
+                        probs.append("stock not a number")
+                if sku:
+                    if sku in seen_sku:
+                        probs.append("duplicate SKU in file")
+                    seen_sku.add(sku)
+                    if q("SELECT id FROM products WHERE business_id=? AND sku=?", (b, sku), one=True):
+                        probs.append("SKU already exists")
+                        status = "err"
+                if barcode:
+                    if barcode in seen_bar:
+                        probs.append("duplicate barcode in file")
+                    seen_bar.add(barcode)
+                    if q("SELECT id FROM products WHERE business_id=? AND barcode=?", (b, barcode), one=True):
+                        probs.append("barcode already exists")
+                        status = "err"
+            else:  # imei
+                imei = r[0].strip() if len(r) > 0 else ""
+                if not imei or imei.lower() == "imei":
+                    continue
+                if imei in seen_imei:
+                    probs.append("duplicate IMEI in file")
+                seen_imei.add(imei)
+                if q("SELECT id FROM imeis WHERE business_id=? AND imei=?", (b, imei), one=True):
+                    probs.append("IMEI already registered")
+                    status = "err"
+                prod = None
+                if len(r) > 1 and r[1].strip():
+                    prod = q("SELECT id FROM products WHERE business_id=? AND (name=? OR id=?)",
+                             (b, r[1].strip(), r[1].strip()), one=True)
+                if not prod:
+                    probs.append("product not found")
+                    status = "err"
+            if probs and status == "ok":
+                status = "warn"
+            out.append((r, status, probs))
+        return out
+
+    def _import_preview_page(self, user, biz, cur, token):
+        b = user["business_id"]
+        batch = q("SELECT * FROM import_batches WHERE token=? AND business_id=?", (token, b), one=True)
+        if not batch:
+            raise NotFound("Import batch not found or expired.")
+        try:
+            rows = [r for r in csv.reader(io.StringIO(batch["raw_text"])) if r and any(c.strip() for c in r)]
+        except Exception:
+            rows = []
+        checked = self._validate_import_rows(b, batch["kind"], rows)
+        n_ok = sum(1 for _, s, _ in checked if s == "ok")
+        n_warn = sum(1 for _, s, _ in checked if s == "warn")
+        n_err = sum(1 for _, s, _ in checked if s == "err")
+        rh = ""
+        for r, s, probs in checked[:200]:
+            cls = {"ok": "pill paid", "warn": "pill partial", "err": "pill due"}[s]
+            cells = "".join(f"<td>{esc(c)}</td>" for c in r)
+            rh += f"<tr>{cells}<td><span class='{cls}'>{s.upper()}</span><br><small>{esc('; '.join(probs))}</small></td></tr>"
+        ncols = max([len(r) for r, _, _ in checked] + [1])
+        heads = ["Col %d" % (i + 1) for i in range(ncols)] + ["Validation"]
+        body = (f'<div class="card"><h3>Import preview ({esc(batch["kind"])})</h3>'
+                f'<p><span class="pill paid">{n_ok} ok</span> <span class="pill partial">{n_warn} warnings</span> '
+                f'<span class="pill due">{n_err} errors</span></p>'
+                f'<p>Only <b>ok</b> rows will be imported. Error rows are skipped; warning rows are imported.</p>'
+                + table(heads, rh) + '</div>'
+                + f'<div class="card"><form method="post" action="/import/confirm">'
+                f"<input type='hidden' name='csrf' value='{esc(user['_csrf'])}'>"
+                f"<input type='hidden' name='token' value='{esc(token)}'>"
+                + ('<button type="submit">Confirm import</button> ' if n_ok + n_warn else '')
+                + '<a class="btn secondary" href="/import">Cancel</a></form></div>')
+        return self.send_html(200, page(user, biz, "Import Preview", body))
+
     def view_import(self, user, biz, cur, parts, method):
         b = user["business_id"]
+        if len(parts) == 2 and parts[1] == "preview" and method == "GET":
+            self.require_role(user, "owner", "admin")
+            qs = parse_qs(urlparse(self.path).query)
+            return self._import_preview_page(user, biz, cur, qs.get("batch", [""])[0])
+        if len(parts) == 2 and parts[1] == "confirm" and method == "POST":
+            self.require_role(user, "owner", "admin")
+            form = self.form()
+            self.check_csrf(user, form)
+            token = self.fv(form, "token")
+            batch = q("SELECT * FROM import_batches WHERE token=? AND business_id=?", (token, b), one=True)
+            if not batch:
+                raise NotFound("Import batch not found or expired.")
+            try:
+                rows = [r for r in csv.reader(io.StringIO(batch["raw_text"])) if r and any(c.strip() for c in r)]
+            except Exception:
+                rows = []
+            checked = self._validate_import_rows(b, batch["kind"], rows)
+            added, skipped = 0, 0
+            for r, s, _ in checked:
+                if s == "err":
+                    skipped += 1
+                    continue
+                try:
+                    if batch["kind"] == "products":
+                        name = r[0].strip()
+                        sku = r[1].strip() if len(r) > 1 else ""
+                        barcode = r[2].strip() if len(r) > 2 else ""
+                        pp = float(r[3]) if len(r) > 3 and r[3].strip() else 0
+                        sp = float(r[4]) if len(r) > 4 and r[4].strip() else 0
+                        stock = int(float(r[5])) if len(r) > 5 and r[5].strip() else 0
+                        brand = r[6].strip() if len(r) > 6 else ""
+                        exec_db("INSERT INTO products(business_id,name,sku,barcode,purchase_price,selling_price,stock,low_stock,created_at,brand) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                                (b, name, sku, barcode, pp, sp, stock, 5, now_iso(), brand))
+                    else:
+                        imei = r[0].strip()
+                        prod = q("SELECT * FROM products WHERE business_id=? AND (name=? OR id=?)",
+                                 (b, r[1].strip(), r[1].strip()), one=True)
+                        exec_db("INSERT INTO imeis(business_id,product_id,imei,status,note,imei_date,created_at) VALUES(?,?,?,?,?,?,?)",
+                                (b, prod["id"], imei, "in-stock", "", today(), now_iso()))
+                    added += 1
+                except Exception:
+                    skipped += 1
+            exec_db("DELETE FROM import_batches WHERE token=?", (token,), touch=False)
+            audit(user, "import", batch["kind"], "", f"Bulk import: {added} added, {skipped} skipped")
+            return self.send_html(200, page(user, biz, "Bulk Import",
+                f'<div class="card ok">Imported {added} row(s), skipped {skipped}.</div><p><a class="btn" href="/import">Back to Import</a></p>'))
         if len(parts) == 2 and parts[1] == "template" and method == "GET":
             qs = parse_qs(urlparse(self.path).query)
             if qs.get("type") == ["imei"]:
@@ -6609,60 +7257,22 @@ class Handler(BaseHTTPRequestHandler):
                 if fname.lower().endswith((".xlsx", ".xls")):
                     return self.send_html(200, page(user, biz, "Bulk Import",
                         '<div class="card err">Excel (.xlsx) import is not available in this stdlib build — download the CSV template below and import that instead.</div><p><a class="btn" href="/import">Back to Import</a></p>'))
-                # Reuse the paste-CSV path by feeding the file text through a synthetic form
                 text = fbytes.decode(errors="replace")
                 kind = fields.get("kind", "products")
-                return self._import_csv(user, biz, cur, kind, text)
+                tok = secrets.token_urlsafe(16)
+                exec_db("INSERT INTO import_batches(token,business_id,kind,raw_text,created_at) VALUES(?,?,?,?,?)",
+                        (tok, b, kind, text, now_iso()), touch=False)
+                return self.redirect(f"/import/preview?batch={tok}")
             # fall through to paste-CSV handling below
             self.require_role(user, "owner", "admin")
             form = self.form()
             self.check_csrf(user, form)
             kind = self.fv(form, "kind")
             text = self.fv(form, "csv")
-            added, skipped = 0, 0
-            try:
-                reader = csv.reader(io.StringIO(text))
-                rows = [r for r in reader if r and any(c.strip() for c in r)]
-            except Exception:
-                rows = []
-            if kind == "products":
-                for r in rows:
-                    try:
-                        name = r[0].strip()
-                        if not name or name.lower() == "name":
-                            continue
-                        sku = r[1].strip() if len(r) > 1 else ""
-                        barcode = r[2].strip() if len(r) > 2 else ""
-                        pp = float(r[3]) if len(r) > 3 and r[3].strip() else 0
-                        sp = float(r[4]) if len(r) > 4 and r[4].strip() else 0
-                        stock = int(float(r[5])) if len(r) > 5 and r[5].strip() else 0
-                        exec_db("INSERT INTO products(business_id,name,sku,barcode,purchase_price,selling_price,stock,low_stock,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                                (b, name, sku, barcode, pp, sp, stock, 5, now_iso()))
-                        added += 1
-                    except Exception:
-                        skipped += 1
-            else:
-                for r in rows:
-                    try:
-                        imei = r[0].strip()
-                        if not imei or imei.lower() == "imei":
-                            continue
-                        prod = None
-                        if len(r) > 1 and r[1].strip():
-                            prod = q("SELECT * FROM products WHERE business_id=? AND (name=? OR id=?)", (b, r[1].strip(), r[1].strip()), one=True)
-                        if not prod:
-                            skipped += 1
-                            continue
-                        if q("SELECT id FROM imeis WHERE business_id=? AND imei=?", (b, imei), one=True):
-                            skipped += 1
-                            continue
-                        exec_db("INSERT INTO imeis(business_id,product_id,imei,status,note,imei_date,created_at) VALUES(?,?,?,?,?,?,?)",
-                                (b, prod["id"], imei, "in-stock", "", today(), now_iso()))
-                        added += 1
-                    except Exception:
-                        skipped += 1
-            return self.send_html(200, page(user, biz, "Bulk Import",
-                f'<div class="card ok">Imported {added} row(s), skipped {skipped}.</div><p><a class="btn" href="/import">Back to Import</a></p>'))
+            tok = secrets.token_urlsafe(16)
+            exec_db("INSERT INTO import_batches(token,business_id,kind,raw_text,created_at) VALUES(?,?,?,?,?)",
+                    (tok, b, kind, text, now_iso()), touch=False)
+            return self.redirect(f"/import/preview?batch={tok}")
         body = ('<div class="card"><h3>Bulk import (upload a CSV file)</h3>'
                 f'<form method="post" action="/import" enctype="multipart/form-data">'
                 f'<input type="hidden" name="csrf" value="{esc(user["_csrf"])}">'
@@ -6832,6 +7442,11 @@ class Handler(BaseHTTPRequestHandler):
                 for r in rows:
                     w.writerow([r["invoice_no"], r["sale_date"], r["total"], r["paid"], r["due"]])
                 return self.send_file(out.getvalue().encode("utf-8-sig"), "sales-report.csv", "text/csv")
+            if qs.get("export") == ["xlsx"]:
+                rows = q("SELECT * FROM sales WHERE business_id=? AND sale_date BETWEEN ? AND ? ORDER BY id DESC", (b, frm, to))
+                return _xlsx_send(self, "Sales report", ["invoice", "date", "total", "paid", "due"],
+                    [[r["invoice_no"], r["sale_date"], r["total"], r["paid"], r["due"]] for r in rows],
+                    "sales-report.xlsx")
             tot = q("SELECT COUNT(*), COALESCE(SUM(total),0), COALESCE(SUM(paid),0), COALESCE(SUM(due),0) FROM sales WHERE business_id=? AND sale_date BETWEEN ? AND ?", (b, frm, to), one=True)
             profit = tot[1] - self._cogs(b, frm, to)
             avg = tot[1] / tot[0] if tot[0] else 0
@@ -6850,7 +7465,7 @@ class Handler(BaseHTTPRequestHandler):
             chart = f'<div class="card"><h3>Sales by day</h3><div class="bd-bars">{bars}</div></div>' if days else ""
             rh = "".join(f"<tr><td>{esc(r['invoice_no'])}</td><td>{esc(r['sale_date'])}</td><td>{money(r['total'], cur)}</td><td>{money(r['paid'], cur)}</td><td>{money(r['due'], cur)}</td></tr>" for r in rows)
             exports = (f'<p><button type="button" class="btn" onclick="window.print()">Print</button> '
-                       f'<a class="btn secondary" href="/reports/sales?from={esc(frm)}&amp;to={esc(to)}&amp;export=csv">Export CSV</a></p>')
+                       f'<a class="btn secondary" href="/reports/sales?from={esc(frm)}&amp;to={esc(to)}&amp;export=csv">Export CSV</a> <a class="btn secondary" href="/reports/sales?from={esc(frm)}&amp;to={esc(to)}&amp;export=xlsx">Export Excel</a></p>')
             body = (filt + f'<div class="card"><p><span class="pill paid">{esc(date_pill)}</span></p>{stats}{exports}'
                     + table(["Invoice", "Date", "Total", "Paid", "Due"], rh) + '</div>' + chart)
             return self._report_send(user, biz, "Sales report", body)
@@ -6886,6 +7501,20 @@ class Handler(BaseHTTPRequestHandler):
                     _pst = "Paid" if r["pdue"] <= 0 else ("Partial" if r["ppaid"] > 0 else "Due")
                     w.writerow([r["dt"], f"PUR-{r['pid']:04d}", r["sname"], r["pname"], r["qty"], r["cost"], r["disc"], r["amt"], _pst])
                 return self.send_file(out.getvalue().encode("utf-8-sig"), "purchase-report.csv", "text/csv")
+            if qs.get("export") == ["xlsx"]:
+                rows = q("""SELECT p.id AS pid, p.purchase_date AS dt, p.total AS ptot, p.paid AS ppaid, p.due AS pdue,
+                               COALESCE(s.name,'-') AS sname, pi.product_name AS pname, pi.qty AS qty,
+                               pi.price AS cost, COALESCE(pi.discount,0) AS disc, pi.amount AS amt
+                        FROM purchase_items pi JOIN purchases p ON p.id=pi.purchase_id
+                        LEFT JOIN suppliers s ON s.id=p.supplier_id
+                        WHERE p.business_id=? AND p.purchase_date BETWEEN ? AND ?
+                        ORDER BY p.purchase_date DESC, p.id DESC""", (b, frm, to))
+                def _pst(r):
+                    return "Paid" if r["pdue"] <= 0 else ("Partial" if r["ppaid"] > 0 else "Due")
+                return _xlsx_send(self, "Purchase report",
+                    ["date", "invoice", "supplier", "product", "qty", "cost", "discount", "total", "payment_status"],
+                    [[r["dt"], f"PUR-{r['pid']:04d}", r["sname"], r["pname"], r["qty"], r["cost"], r["disc"], r["amt"], _pst(r)] for r in rows],
+                    "purchase-report.xlsx")
             tot_amt = sum(r["amt"] for r in rows)
             tot_disc = sum(r["disc"] for r in rows)
             # Paid is purchase-level: count each purchase once, not once per line.
@@ -6906,7 +7535,7 @@ class Handler(BaseHTTPRequestHandler):
                      f'<select name="supplier">{sopts}</select> <select name="status">{stopts}</select> '
                      f'<button type="submit">Filter</button></form></div>')
             exports = (f'<p><button type="button" class="btn" onclick="window.print()">Print</button> '
-                       f'<a class="btn secondary" href="/reports/purchases?from={esc(frm)}&amp;to={esc(to)}&amp;supplier={esc(sup_f)}&amp;status={esc(st_f)}&amp;export=csv">Export CSV</a></p>')
+                       f'<a class="btn secondary" href="/reports/purchases?from={esc(frm)}&amp;to={esc(to)}&amp;supplier={esc(sup_f)}&amp;status={esc(st_f)}&amp;export=csv">Export CSV</a> <a class="btn secondary" href="/reports/purchases?from={esc(frm)}&amp;to={esc(to)}&amp;supplier={esc(sup_f)}&amp;status={esc(st_f)}&amp;export=xlsx">Export Excel</a></p>')
             body = (pfilt + f'<div class="card"><p>Total lines: {len(rows)} | Total: {money(tot_amt, cur)} | '
                     f'Discount: {money(tot_disc, cur)} | Paid (purchases): {money(tot_paid, cur)}</p>{exports}'
                     + table(["Date", "Invoice", "Supplier", "Product", "Qty", "Cost", "Discount", "Total", "Payment Status"], rh) + '</div>')
@@ -7109,9 +7738,26 @@ class Handler(BaseHTTPRequestHandler):
             rows = q("""SELECT u.email, u.role, COUNT(s.token_hash) AS sess, u.created_at FROM users u
                         LEFT JOIN sessions s ON s.user_id=u.id WHERE u.business_id=? GROUP BY u.id ORDER BY u.id""", (b,))
             rh = "".join(f"<tr><td>{esc(r['email'])}</td><td>{esc(r['role'])}</td><td>{r['sess']}</td><td>{esc(r['created_at'])}</td></tr>" for r in rows)
-            body = ('<div class="card"><h3>User activity</h3><p>Note: LABH records sessions per user, not a per-action audit log — '
-                    'so this report shows accounts and their active sessions, not every click.</p>'
-                    + table(["User", "Role", "Active sessions", "Created"], rh) + '</div>')
+            # Phase 2: per-action audit log alongside the sessions table.
+            aqs = parse_qs(urlparse(self.path).query)
+            arows = q("SELECT * FROM audit_log WHERE business_id=? ORDER BY id DESC LIMIT 500", (b,))
+            aq = (aqs.get("aq", [""])[0] or "").strip().lower()
+            if aq:
+                arows = [r for r in arows if aq in (r["action"] or "").lower() or aq in (r["entity"] or "").lower()
+                         or aq in (r["user_email"] or "").lower() or aq in (r["detail"] or "").lower()]
+            page_rows, pager, _ = paginate(arows, aqs, "/reports/user-activity")
+            ah = "".join(f"<tr><td>{esc((r['created_at'] or '')[:16])}</td><td>{esc(r['user_email'])}</td>"
+                         f"<td><span class='pill partial'>{esc(r['action'])}</span></td><td>{esc(r['entity'])}</td>"
+                         f"<td>{esc(r['entity_id'])}</td><td>{esc(r['detail'])}</td></tr>" for r in page_rows)
+            abody = ('<div class="card"><h3>Action log</h3>'
+                     f'<form method="get" action="/reports/user-activity"><div class="bd-search">{icon("search", 18)}'
+                     f'<input type="text" name="aq" placeholder="Search actions…" value="{esc(aq)}">'
+                     '<button type="submit" class="btn secondary">Search</button></div></form>'
+                     + (table(["Time", "User", "Action", "Entity", "Ref", "Details"], ah) + pager if arows
+                        else "<p>No actions logged yet. Create a sale, purchase, payment or expense and it will appear here.</p>")
+                     + '</div>')
+            body = ('<div class="card"><h3>User activity</h3><p>Sessions per user account.</p>'
+                    + table(["User", "Role", "Active sessions", "Created"], rh) + '</div>' + abody)
             return self._report_send(user, biz, "User activity", body)
         if slug == "business-analytics":
             top_prod = q("""SELECT si.product_name AS nm, COALESCE(SUM(si.qty),0) AS qq, COALESCE(SUM(si.amount),0) AS rev
